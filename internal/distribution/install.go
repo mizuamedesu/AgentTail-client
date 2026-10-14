@@ -20,14 +20,22 @@ import (
 )
 
 type Record struct {
-	Version   string `json:"version"`
-	Sequence  uint64 `json:"sequence"`
-	Digest    string `json:"manifest_sha256"`
-	ReleaseID string `json:"release_id"`
-	StateDir  string `json:"state_dir"`
-	Source    string `json:"source"`
-	Service   bool   `json:"service_installed"`
+	Version      string `json:"version"`
+	Sequence     uint64 `json:"sequence"`
+	Digest       string `json:"manifest_sha256"`
+	ReleaseID    string `json:"release_id"`
+	StateDir     string `json:"state_dir"`
+	Source       string `json:"source"`
+	Service      bool   `json:"service_installed"`
+	Verification string `json:"verification,omitempty"`
 }
+
+// VerificationMethod preserves signature verification for older records.
+func (r *Record) VerificationMethod() string {
+	method, _ := verificationMethod(r.Verification)
+	return method
+}
+
 type Manager struct {
 	Root, Launcher string
 	State          *localstate.State
@@ -75,6 +83,9 @@ func (m *Manager) Record() (*Record, error) {
 func (m *Manager) validateRecord(r *Record) error {
 	if r == nil {
 		return nil
+	}
+	if _, err := verificationMethod(r.Verification); err != nil {
+		return err
 	}
 	if !safeVersion.MatchString(r.Version) || r.Sequence == 0 || !digestPattern.MatchString(r.Digest) || r.ReleaseID != r.Version+"-"+r.Digest[:16] || filepath.Clean(r.StateDir) != filepath.Clean(m.State.Store.Dir) {
 		return errors.New("installation record is invalid or belongs to a different state directory")
@@ -276,6 +287,14 @@ func (m *Manager) Recover(ctx context.Context) error {
 }
 
 func (m *Manager) Apply(ctx context.Context, bundle, source string, noService, updating bool) (*Record, error) {
+	return m.ApplyWithVerification(ctx, bundle, source, noService, updating, SignatureVerification)
+}
+
+func (m *Manager) ApplyWithVerification(ctx context.Context, bundle, source string, noService, updating bool, method string) (*Record, error) {
+	method, err := verificationMethod(method)
+	if err != nil {
+		return nil, err
+	}
 	unlock, err := localstate.OperationLock(filepath.Join(m.Root, "update.lock"))
 	if err != nil {
 		return nil, err
@@ -303,7 +322,7 @@ func (m *Manager) Apply(ctx context.Context, bundle, source string, noService, u
 			return nil, errors.New("an unmanaged AgentTail service exists; remove that service before installing")
 		}
 	}
-	manifest, root, err := readBundle(bundle)
+	manifest, root, err := readBundleWithVerification(bundle, method)
 	if err != nil {
 		return nil, err
 	}
@@ -319,6 +338,9 @@ func (m *Manager) Apply(ctx context.Context, bundle, source string, noService, u
 	}
 	if source == "" {
 		source = DefaultSource
+		if method == ChecksumVerification {
+			source = ChecksumSource
+		}
 		if old != nil {
 			source = old.Source
 		}
@@ -326,7 +348,7 @@ func (m *Manager) Apply(ctx context.Context, bundle, source string, noService, u
 	if err = ValidateSource(source); err != nil {
 		return nil, err
 	}
-	next := &Record{Version: manifest.Version, Sequence: manifest.Sequence, Digest: manifest.Digest, ReleaseID: manifest.Version + "-" + manifest.Digest[:16], StateDir: m.State.Store.Dir, Source: source, Service: !noService}
+	next := &Record{Version: manifest.Version, Sequence: manifest.Sequence, Digest: manifest.Digest, ReleaseID: manifest.Version + "-" + manifest.Digest[:16], StateDir: m.State.Store.Dir, Source: source, Service: !noService, Verification: method}
 	if err = m.stage(manifest, root, next); err != nil {
 		return nil, err
 	}
@@ -450,7 +472,7 @@ func (m *Manager) stage(manifest Manifest, bundle *os.Root, next *Record) error 
 	if err = atomicFile(filepath.Join(dir, "manifest.txt"), manifest.Raw, 0644); err != nil {
 		return err
 	}
-	if err = atomicFile(filepath.Join(dir, "manifest.sig"), manifest.Signature, 0644); err != nil {
+	if err = atomicFile(filepath.Join(dir, proofFile(next.VerificationMethod())), manifest.Signature, 0644); err != nil {
 		return err
 	}
 	dest := filepath.Join(versions, next.ReleaseID)

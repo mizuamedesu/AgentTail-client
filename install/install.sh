@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -eu
 umask 077
-source_url='https://agenttail.mizuame.app/downloads/stable'
+source_url='https://agenttail.mizuame.app/downloads/current'
 custom_source=''
 server='https://agenttail-api.mizuame.app'
 vpn=''
@@ -34,8 +34,7 @@ case "$host_system" in Linux) system=linux ;; Darwin) system=darwin ;; *) printf
 case "$host_cpu" in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; riscv64) arch=riscv64 ;; *) printf 'Unsupported CPU: %s (supported: amd64, arm64, Linux riscv64)\n' "$host_cpu" >&2; exit 2 ;; esac
 if [ "$arch" = riscv64 ]; then
   [ "$system" = linux ] || { printf '%s\n' 'RISC-V builds require Linux' >&2; exit 2; }
-  # Existing desktop updaters reject manifests containing an unknown CPU.
-  [ -n "$custom_source" ] || source_url='https://agenttail.mizuame.app/downloads/nanokvm'
+  [ -n "$custom_source" ] || source_url='https://agenttail.mizuame.app/downloads/current-nanokvm'
 fi
 for dependency in curl openssl awk; do command -v "$dependency" >/dev/null 2>&1 || { printf 'Required command: %s\n' "$dependency" >&2; exit 2; }; done
 if [ "$system" = linux ] && [ -z "$ssh_public$ssh_private" ]; then
@@ -56,26 +55,14 @@ if [ "$system" = linux ] && [ -z "$ssh_public$ssh_private" ]; then
 fi
 release_dir=$(mktemp -d "${TMPDIR:-/tmp}/agenttail-install.XXXXXXXX")
 trap 'rm -rf "$release_dir"' EXIT HUP INT TERM
-cat > "$release_dir/trusted.pub" <<'AGENTTAIL_PUBLIC_KEY'
------BEGIN PUBLIC KEY-----
-MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAzzxw79cAiFFruFRAB881
-cEHhBcsIEMZMgXEhmHVC8mFZpqmL18czZ/4otOA8E4n42PsYsB8WiRpxiIx1/lR6
-KKjeWI4IFdSyW13MANkMe4hDC3eERK9UfXRjT4zIQVU4T+4rnLm9Hq7tIv93lrkL
-MYkbmcLYCQXKjdNSO3/yz/n/XxnVogedWQa7SvPba71XolfDmQc3j5H87k0/HWdY
-bvoWKA1ILYts6fpW+l+yDih8r0XzsW+mqU9DuaiKvmY+7YvQjmHTmmdhASPN8hxW
-JhzCeRC16euJY2zMGVX80o9ov3fTRN+03cCiRFHPQ5h/I+p6DOLwQXNsePj7aNL3
-cL+sK+nomS5QbY6CEx8hVBOKGU2ONKLHc4ED1RlQKDpS7yi/0RvB/p6v+HvBAi0J
-Z3T2uggZ4FgyQNWpPpRhkbgVy9yLpUMsMHXfXGywFIUO18Cm+19Gee7Thv5yUiNX
-e/nWxBVpnG1H1BGBKRkM11HkOUTwQHXcXsUjkIMsd/VTAgMBAAE=
------END PUBLIC KEY-----
-AGENTTAIL_PUBLIC_KEY
 fetch() { curl --proto '=https' --tlsv1.2 --fail --silent --show-error --max-time 120 --max-filesize 67108864 --output "$release_dir/$1" "${source_url%/}/$1"; }
 fetch manifest.txt
-fetch manifest.sig
+fetch manifest.sha256
 [ "$(wc -c < "$release_dir/manifest.txt" | tr -d ' ')" -le 65536 ] || { printf '%s\n' 'Manifest too large' >&2; exit 2; }
-openssl dgst -sha256 -verify "$release_dir/trusted.pub" -signature "$release_dir/manifest.sig" "$release_dir/manifest.txt" >/dev/null || { printf '%s\n' 'Release signature verification failed' >&2; exit 2; }
+manifest_hash=$(openssl dgst -sha256 "$release_dir/manifest.txt" | awk '{print $NF}')
+[ "$(wc -c < "$release_dir/manifest.sha256" | tr -d ' ')" = 79 ] && [ "$(cat "$release_dir/manifest.sha256")" = "$manifest_hash  manifest.txt" ] || { printf '%s\n' 'Release manifest SHA-256 mismatch' >&2; exit 2; }
 now=$(date +%s)
-# Check expiry before executing any signed binary; the binary repeats all checks.
+# HTTPS authenticates the release source. Check hashes and expiry before execution.
 awk -v now="$now" 'NR==1 {if($0!="agenttail-manifest-v1")exit 1} $1=="created" {if(NF!=2||$2!~/^[0-9]+$/||++c!=1)exit 1;created=$2} $1=="expires" {if(NF!=2||$2!~/^[0-9]+$/||++e!=1)exit 1;expires=$2} END {if(c!=1||e!=1||created>now+300||expires<=now||expires<=created||expires-created>31622400)exit 1}' "$release_dir/manifest.txt" || { printf '%s\n' 'Release manifest expired or invalid' >&2; exit 2; }
 artifact=$(awk -v os="$system" -v arch="$arch" '$1=="file"&&$2==os&&$3==arch&&$4=="vpn" {if(NF!=8||$5!~/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/||$6!~/^[0-9]+$/||$6<1||$6>67108864||$7!~/^[0-9a-f]+$/||length($7)!=64||$8!="-"||++n!=1)exit 1;name=$5} END{if(n!=1)exit 1;print name}' "$release_dir/manifest.txt") || { printf '%s\n' 'No valid native artifact for this OS/CPU' >&2; exit 2; }
 fetch "$artifact"
@@ -96,7 +83,7 @@ if [ -n "$ssh_private" ]; then
   "$release_dir/$artifact" "$@"
   exit 0
 fi
-"$release_dir/$artifact" install --bundle "$release_dir" --source "$source_url" --server "$server" ${no_service:+"$no_service"}
+"$release_dir/$artifact" install --https-checksums --bundle "$release_dir" --source "$source_url" --server "$server" ${no_service:+"$no_service"}
 "$release_dir/$artifact" skills install
 printf '%s\n' 'AgentTail installed. Open a new shell to use the agenttail command.'
 if [ -n "$vpn" ]; then

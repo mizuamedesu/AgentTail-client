@@ -1,7 +1,11 @@
 # インストールとビルド
 
 公式配布は `https://agenttail.mizuame.app/install.sh` と `install.ps1` を使用します。
-インストーラーは埋め込み公開鍵で manifest の署名と各ファイルのハッシュ・期限を検証します。
+インストーラーは HTTPS で取得した manifest の SHA-256、各ファイルのハッシュ・サイズ・期限を検証します。
+`install.sh.sha256` と `install.ps1.sha256` も配布します。配布元の認証は HTTPS に依存します。
+新規導入は `current`、NanoKVM は `current-nanokvm` チャネルを使用します。
+従来の署名付き `stable` / `nanokvm` は保持し、既存の更新は署名検証を継続します。
+公式インストーラーの再実行で新方式へ移行でき、既存の資格情報を保持します。
 `--vpn <VPN ID>` で参加、`--no-service` でサービスなしの導入を選択できます。
 
 Linux の amd64/arm64 は、`systemd-creds` が利用できるとき既存の systemd 暗号化保管を使用します。
@@ -31,4 +35,13 @@ python3 scripts/render-installers.py
 `agenttail licenses` で GPL 本文・公開ソースの URL・第三者の表示を確認できます。
 公式リリースのタグと source archive は公開リポジトリの Releases で配布します。
 archive には Go 依存ソースを `vendor/` として含め、`go build -mod=vendor` で利用できます。
-上記の互換性修正を公式インストーラーで使用するには、修正版の署名済み CLI の公開が必要です。
+公開は全 native CI の成功後に行います。ハッシュ方式では署名秘密鍵は不要です。
+
+インストーラーのハッシュ照合例:
+
+```sh
+curl -fsS https://agenttail.mizuame.app/install.sh -o install.sh
+curl -fsS https://agenttail.mizuame.app/install.sh.sha256 -o install.sh.sha256
+sha256sum -c install.sh.sha256
+sh install.sh --vpn <VPN-ID>
+```

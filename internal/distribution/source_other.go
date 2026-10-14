@@ -5,3 +5,4 @@
 package distribution
 
 const DefaultSource = "https://agenttail.mizuame.app/downloads/stable"
+const ChecksumSource = "https://agenttail.mizuame.app/downloads/current"

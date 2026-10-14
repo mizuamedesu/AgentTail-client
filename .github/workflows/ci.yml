@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Native artifact version (signed separately on release host)
+        description: Native artifact version
         default: 0.1.0-dev.19
         required: true
 permissions:
@@ -104,11 +104,12 @@ jobs:
           path: build/native/
           retention-days: 14
           if-no-files-found: error
-      - name: Isolated signed install/update/uninstall with real service
+      - name: Signed and checksum install/update/uninstall with real service
         if: runner.os != 'Windows'
         run: |
           python3 tests/build_lifecycle_fixtures.py
           sudo env TMPDIR=/tmp GITHUB_ACTIONS=true python3 tests/install_lifecycle.py --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --report build/native-lifecycle.json
+          sudo env TMPDIR=/tmp GITHUB_ACTIONS=true python3 tests/install_lifecycle.py --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --https-checksums --report build/checksum-lifecycle.json
       - name: Windows verified install/update/uninstall with SCM
         if: runner.os == 'Windows'
         shell: pwsh
@@ -117,12 +118,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python3 tests/install_lifecycle.py --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --report build/native-lifecycle.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python3 tests/install_lifecycle.py --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --https-checksums --report build/checksum-lifecycle.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: evidence-${{ matrix.os }}-${{ matrix.arch }}
           path: |
             build/native-lifecycle.json
+            build/checksum-lifecycle.json
             build/native-agent.json
           retention-days: 14
   cross-builds:
@@ -188,11 +192,13 @@ jobs:
         run: |
           python3 tests/build_lifecycle_fixtures.py --arch riscv64
           sudo python3 tests/install_lifecycle.py --arch riscv64 --emulated --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --report build/nanokvm-lifecycle.json
+          sudo python3 tests/install_lifecycle.py --arch riscv64 --emulated --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --https-checksums --report build/nanokvm-checksum-lifecycle.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: evidence-nanokvm
           path: |
             build/nanokvm-lifecycle.json
+            build/nanokvm-checksum-lifecycle.json
             build/nanokvm-agent.json
           retention-days: 14

@@ -23,11 +23,25 @@ type updateCache struct {
 	Failed    bool   `json:"failed,omitempty"`
 }
 
-// AvailableUpdate is advisory only. Cached metadata is signature-verified again
+// AvailableUpdate is advisory only. Cached metadata is verified again
 // before use; the installed sequence and running version prevent downgrade tips.
 // Callers should bound the context and ignore errors without affecting their work.
 func AvailableUpdate(ctx context.Context, source, version string, sequence uint64, cachePath string) (string, error) {
 	return availableUpdate(ctx, source, version, sequence, cachePath, time.Now(), LatestManifest, Verify)
+}
+
+func AvailableUpdateWithVerification(ctx context.Context, source, version string, sequence uint64, cachePath, method string) (string, error) {
+	method, err := verificationMethod(method)
+	if err != nil {
+		return "", err
+	}
+	fetch := func(ctx context.Context, source string) (Manifest, error) {
+		return LatestManifestWithVerification(ctx, source, method)
+	}
+	verify := func(raw, proof []byte, now time.Time) (Manifest, error) {
+		return verifyRelease(raw, proof, method, now)
+	}
+	return availableUpdate(ctx, source, version, sequence, cachePath, time.Now(), fetch, verify)
 }
 
 func availableUpdate(ctx context.Context, source, version string, sequence uint64, cachePath string, now time.Time,

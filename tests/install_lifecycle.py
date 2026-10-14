@@ -69,6 +69,7 @@ def main():
     p.add_argument('--with-service', action='store_true')
     p.add_argument('--credentials', action='store_true', help='exercise CI-only native credential fixtures across versions')
     p.add_argument('--report', type=Path)
+    p.add_argument('--https-checksums', action='store_true', help='exercise HTTPS/checksum install and recorded updates')
     a = p.parse_args()
     system = {'Linux':'linux', 'Darwin':'darwin', 'Windows':'windows'}[platform.system()]
     arch = a.arch or {'arm64':'arm64','aarch64':'arm64','riscv64':'riscv64','x86_64':'amd64','amd64':'amd64'}[platform.machine().lower()]
@@ -84,6 +85,8 @@ def main():
     state = Path(tempfile.mkdtemp(prefix='agenttail-install-state-'))
 
     def run(binary, *args, ok=True):
+        if a.https_checksums and args[0]=='install':
+            args=(*args,'--https-checksums')
         # Match install.sh, including its restrictive umask after elevation.
         permissions = {} if system=='windows' else {'umask':0o077}
         result = subprocess.run([str(binary),'--state-dir',str(state),'--json',*map(str,args)],capture_output=True,text=True,timeout=90,**permissions)
@@ -135,6 +138,7 @@ def main():
         assert log.stat().st_size <= 4097 and log.stat().st_mode & 0o777 == 0o600
         occupied.unlink()
     first = run(bootstrap,'install','--bundle',a.first.resolve(),*(() if a.with_service else ('--no-service',)))['data']
+    assert first.get('verification','signature')==('https-sha256' if a.https_checksums else 'signature')
     if startup_diagnostics_tested:
         assert not Path('/var/run/agenttail-service/last-error.txt').exists()
     old = installed()
@@ -168,7 +172,8 @@ def main():
         assert run(old,'_check-secrets')['data']['native_credentials_readable']
     # A changed signed manifest cannot select an arbitrary replacement.
     tampered = Path(tempfile.mkdtemp(prefix='agenttail-tamper-'))
-    shutil.copy(a.second/'manifest.sig',tampered/'manifest.sig')
+    proof='manifest.sha256' if a.https_checksums else 'manifest.sig'
+    shutil.copy(a.second/proof,tampered/proof)
     (tampered/'manifest.txt').write_bytes((a.second/'manifest.txt').read_bytes()+b'\n')
     run(old,'update','--bundle',tampered,ok=False)
     assert json.loads(record.read_text())['sequence']==first['sequence']
@@ -226,6 +231,7 @@ def main():
     report['unprivileged_cli_tested']=system!='windows'
     report['private_install_directories_repaired']=permissions_repaired
     report['macos_login_shell_path_tested']=system=='darwin'
+    report['verification']='https-sha256' if a.https_checksums else 'signature'
     if a.report:
         a.report.parent.mkdir(parents=True,exist_ok=True)
         a.report.write_text(json.dumps(report,indent=2)+'\n')

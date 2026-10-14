@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Verify release signing with both PEM line endings and a mismatched key."""
 from pathlib import Path
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,20 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts/sign-release.py"
 
 
 class ReleaseSigningTests(unittest.TestCase):
+    def test_checksum_release_without_any_key(self):
+        with tempfile.TemporaryDirectory(prefix='agenttail-checksum-test-') as directory:
+            root=Path(directory)
+            artifacts=root/'artifacts'
+            artifacts.mkdir()
+            data=b'checksum release artifact'
+            (artifacts/'agenttail-linux-amd64').write_bytes(data)
+            result=subprocess.run([sys.executable,str(SCRIPT),'--dir',str(artifacts),'--version','0.0.0-test.1','--sequence','1','--checksums'],cwd=root,capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            raw=(artifacts/'manifest.txt').read_bytes()
+            self.assertIn(hashlib.sha256(data).hexdigest().encode(),raw)
+            self.assertEqual((artifacts/'manifest.sha256').read_bytes(),(hashlib.sha256(raw).hexdigest()+'  manifest.txt\n').encode())
+            self.assertFalse((artifacts/'manifest.sig').exists())
+
     def test_public_key_pinning_and_signature(self):
         with tempfile.TemporaryDirectory(prefix="agenttail-signing-test-") as directory:
             root = Path(directory)

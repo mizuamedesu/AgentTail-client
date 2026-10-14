@@ -56,7 +56,15 @@ func releaseFile(ctx context.Context, client *http.Client, source, name string) 
 }
 
 func releaseMetadata(ctx context.Context, client *http.Client, source string) ([]byte, []byte, error) {
+	return releaseMetadataWithVerification(ctx, client, source, SignatureVerification)
+}
+
+func releaseMetadataWithVerification(ctx context.Context, client *http.Client, source, method string) ([]byte, []byte, error) {
 	if err := ValidateSource(source); err != nil {
+		return nil, nil, err
+	}
+	method, err := verificationMethod(method)
+	if err != nil {
 		return nil, nil, err
 	}
 	get := func(name string, limit int64) ([]byte, error) {
@@ -71,25 +79,37 @@ func releaseMetadata(ctx context.Context, client *http.Client, source string) ([
 	if err != nil {
 		return nil, nil, err
 	}
-	sig, err := get("manifest.sig", 2048)
+	sig, err := get(proofFile(method), 2048)
 	return raw, sig, err
 }
 
 // LatestManifest retrieves only public metadata, with the same HTTPS and pinned
 // signature verification as an update. It never downloads executable artifacts.
 func LatestManifest(ctx context.Context, source string) (Manifest, error) {
+	return LatestManifestWithVerification(ctx, source, SignatureVerification)
+}
+
+func LatestManifestWithVerification(ctx context.Context, source, method string) (Manifest, error) {
 	client, transport := releaseClient()
 	defer transport.CloseIdleConnections()
-	raw, sig, err := releaseMetadata(ctx, client, source)
+	raw, sig, err := releaseMetadataWithVerification(ctx, client, source, method)
 	if err != nil {
 		return Manifest{}, err
 	}
-	return Verify(raw, sig, time.Now())
+	return verifyRelease(raw, sig, method, time.Now())
 }
 
-// Download uses no account credentials, never follows redirects, and verifies
-// the signed manifest before selecting any remote filename or executing code.
+// Download uses the legacy signature policy. DownloadWithVerification selects
+// an explicit policy; both use HTTPS without account credentials or redirects.
 func Download(ctx context.Context, source string) (string, func(), error) {
+	return DownloadWithVerification(ctx, source, SignatureVerification)
+}
+
+func DownloadWithVerification(ctx context.Context, source, method string) (string, func(), error) {
+	method, err := verificationMethod(method)
+	if err != nil {
+		return "", nil, err
+	}
 	if err := ValidateSource(source); err != nil {
 		return "", nil, err
 	}
@@ -103,12 +123,12 @@ func Download(ctx context.Context, source string) (string, func(), error) {
 	fetch := func(name string) (io.ReadCloser, error) {
 		return releaseFile(ctx, client, source, name)
 	}
-	raw, sig, err := releaseMetadata(ctx, client, source)
+	raw, sig, err := releaseMetadataWithVerification(ctx, client, source, method)
 	if err != nil {
 		clean()
 		return "", nil, err
 	}
-	m, err := Verify(raw, sig, time.Now())
+	m, err := verifyRelease(raw, sig, method, time.Now())
 	if err != nil {
 		clean()
 		return "", nil, err
@@ -130,7 +150,7 @@ func Download(ctx context.Context, source string) (string, func(), error) {
 		}
 	}
 	if err = os.WriteFile(filepath.Join(dir, "manifest.txt"), raw, 0600); err == nil {
-		err = os.WriteFile(filepath.Join(dir, "manifest.sig"), sig, 0600)
+		err = os.WriteFile(filepath.Join(dir, proofFile(method)), sig, 0600)
 	}
 	if err != nil {
 		clean()
@@ -146,6 +166,14 @@ func checkArtifact(data []byte, a Artifact) error {
 	return nil
 }
 func readBundle(dir string) (Manifest, *os.Root, error) {
+	return readBundleWithVerification(dir, SignatureVerification)
+}
+
+func readBundleWithVerification(dir, method string) (Manifest, *os.Root, error) {
+	method, err := verificationMethod(method)
+	if err != nil {
+		return Manifest{}, nil, err
+	}
 	r, err := os.OpenRoot(dir)
 	if err != nil {
 		return Manifest{}, nil, err
@@ -163,12 +191,12 @@ func readBundle(dir string) (Manifest, *os.Root, error) {
 		r.Close()
 		return Manifest{}, nil, err
 	}
-	sig, err := read("manifest.sig", 2048)
+	sig, err := read(proofFile(method), 2048)
 	if err != nil {
 		r.Close()
 		return Manifest{}, nil, err
 	}
-	m, err := Verify(raw, sig, time.Now())
+	m, err := verifyRelease(raw, sig, method, time.Now())
 	if err != nil {
 		r.Close()
 		return Manifest{}, nil, err

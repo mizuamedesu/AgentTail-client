@@ -20,6 +20,7 @@ import (
 func (o *options) addDistribution(root *cobra.Command) {
 	var bundle, source string
 	var noService bool
+	var checksums bool
 	install := &cobra.Command{Use: "install", Short: "Install a verified native release and boot service", Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error {
 		planned := o.config
 		if err := o.saveOrigin(&planned); err != nil {
@@ -33,7 +34,11 @@ func (o *options) addDistribution(root *cobra.Command) {
 		if err != nil {
 			return err
 		}
-		r, err := m.Apply(o.ctx, bundle, source, noService, existing != nil)
+		method := distribution.SignatureVerification
+		if checksums {
+			method = distribution.ChecksumVerification
+		}
+		r, err := m.ApplyWithVerification(o.ctx, bundle, source, noService, existing != nil, method)
 		if err != nil {
 			return err
 		}
@@ -47,13 +52,14 @@ func (o *options) addDistribution(root *cobra.Command) {
 		}
 		return o.print(r)
 	}}
-	install.Flags().StringVar(&bundle, "bundle", "", "directory containing manifest.txt, manifest.sig and native artifacts")
-	install.Flags().StringVar(&source, "source", distribution.DefaultSource, "HTTPS update source")
+	install.Flags().StringVar(&bundle, "bundle", "", "directory containing release metadata and native artifacts")
+	install.Flags().StringVar(&source, "source", "", "HTTPS update source (defaults to the official channel for the verification method)")
+	install.Flags().BoolVar(&checksums, "https-checksums", false, "verify manifest.sha256; trust the HTTPS release source for publisher authentication")
 	install.Flags().BoolVar(&noService, "no-service", false, "install files only; run the agent in the foreground")
 	required(install, "bundle")
 	root.AddCommand(install)
 	var updateBundle, updateSource string
-	update := &cobra.Command{Use: "update", Short: "Verify and activate a newer signed release; preserve native credentials", Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error {
+	update := &cobra.Command{Use: "update", Short: "Verify and activate a newer release; preserve native credentials", Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error {
 		m, err := distribution.New(o.state)
 		if err != nil {
 			return err
@@ -72,20 +78,20 @@ func (o *options) addDistribution(root *cobra.Command) {
 		dir := updateBundle
 		if dir == "" {
 			var clean func()
-			dir, clean, err = distribution.Download(o.ctx, s)
+			dir, clean, err = distribution.DownloadWithVerification(o.ctx, s, r.VerificationMethod())
 			if err != nil {
 				return err
 			}
 			defer clean()
 		}
-		r, err = m.Apply(o.ctx, dir, s, false, true)
+		r, err = m.ApplyWithVerification(o.ctx, dir, s, false, true, r.VerificationMethod())
 		if err != nil {
 			return err
 		}
 		return o.print(r)
 	}}
-	update.Flags().StringVar(&updateBundle, "bundle", "", "use an offline signed bundle")
-	update.Flags().StringVar(&updateSource, "source", "", "HTTPS source; release trust key remains pinned")
+	update.Flags().StringVar(&updateBundle, "bundle", "", "use an offline bundle with the installed verification method")
+	update.Flags().StringVar(&updateSource, "source", "", "HTTPS source; preserve the installed verification method")
 	root.AddCommand(update)
 	var yes, offline, purge bool
 	uninstall := &cobra.Command{Use: "uninstall", Short: "Revoke local authorizations, remove native secrets, service and executable", Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error {

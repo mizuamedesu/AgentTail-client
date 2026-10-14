@@ -42,6 +42,7 @@ func (o *options) showUpdateNotice(cmd *cobra.Command) {
 		return
 	}
 	source := distribution.DefaultSource
+	method := distribution.SignatureVerification
 	var sequence uint64
 	cacheDir, err := os.UserCacheDir()
 	if o.state != nil {
@@ -51,14 +52,18 @@ func (o *options) showUpdateNotice(cmd *cobra.Command) {
 		}
 		if record != nil {
 			source, sequence = record.Source, record.Sequence
+			method = record.VerificationMethod()
 		}
 		cacheDir, err = o.state.Store.Dir, nil
 	}
 	cachePath := ""
 	if err == nil {
-		cachePath = filepath.Join(cacheDir, "agenttail-update-check", fmt.Sprintf("%x.json", sha256.Sum256([]byte(source))))
+		cachePath = filepath.Join(cacheDir, "agenttail-update-check", fmt.Sprintf("%x.json", sha256.Sum256([]byte(source+"/"+method))))
 	}
-	writeUpdateNotice(o.ctx, os.Stderr, o.version, source, sequence, cachePath, distribution.AvailableUpdate)
+	check := func(ctx context.Context, source, version string, sequence uint64, cachePath string) (string, error) {
+		return distribution.AvailableUpdateWithVerification(ctx, source, version, sequence, cachePath, method)
+	}
+	writeUpdateNotice(o.ctx, os.Stderr, o.version, source, sequence, cachePath, check)
 }
 
 func writeUpdateNotice(ctx context.Context, output io.Writer, current, source string, sequence uint64, cachePath string,

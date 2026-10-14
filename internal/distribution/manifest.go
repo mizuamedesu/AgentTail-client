@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Package distribution verifies and installs signed, versioned native releases.
-// A signed flat manifest avoids executing archive paths or extraction hooks.
+// Package distribution verifies and installs versioned native releases.
+// Flat manifests avoid executing archive paths or extraction hooks.
 package distribution
 
 import (
@@ -27,6 +27,9 @@ var trustedPEM []byte
 
 const MaxManifest = 64 * 1024
 const MaxArtifact = 64 * 1024 * 1024
+
+const SignatureVerification = "signature"
+const ChecksumVerification = "https-sha256"
 
 var safeVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9]+(?:[.-][a-z0-9]+)*)?$`)
 var safeFile = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
@@ -70,14 +73,62 @@ func Verify(raw, signature []byte, now time.Time) (Manifest, error) {
 }
 
 func verify(raw, signature []byte, key *rsa.PublicKey, now time.Time) (Manifest, error) {
+	if len(raw) == 0 || len(raw) > MaxManifest {
+		return Manifest{}, errors.New("release manifest size is invalid")
+	}
+	hash := sha256.Sum256(raw)
+	if err := rsa.VerifyPKCS1v15(key, crypto.SHA256, hash[:], signature); err != nil {
+		return Manifest{}, errors.New("release signature verification failed")
+	}
+	return parseManifest(raw, signature, now)
+}
+
+// VerifyChecksum checks a manifest against the hash obtained from its HTTPS
+// release source. Publisher authentication is provided by HTTPS in this mode.
+// It is selected explicitly and is never a fallback for an invalid signature.
+func VerifyChecksum(raw, checksum []byte, now time.Time) (Manifest, error) {
+	hash := sha256.Sum256(raw)
+	expected := fmt.Sprintf("%x  manifest.txt\n", hash)
+	if string(checksum) != expected {
+		return Manifest{}, errors.New("release manifest SHA-256 mismatch")
+	}
+	return parseManifest(raw, checksum, now)
+}
+
+func verificationMethod(method string) (string, error) {
+	if method == "" {
+		return SignatureVerification, nil // Existing installation records.
+	}
+	if method != SignatureVerification && method != ChecksumVerification {
+		return "", errors.New("unsupported release verification method")
+	}
+	return method, nil
+}
+
+func verifyRelease(raw, proof []byte, method string, now time.Time) (Manifest, error) {
+	method, err := verificationMethod(method)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if method == ChecksumVerification {
+		return VerifyChecksum(raw, proof, now)
+	}
+	return Verify(raw, proof, now)
+}
+
+func proofFile(method string) string {
+	if method == ChecksumVerification {
+		return "manifest.sha256"
+	}
+	return "manifest.sig"
+}
+
+func parseManifest(raw, proof []byte, now time.Time) (Manifest, error) {
 	var m Manifest
 	if len(raw) == 0 || len(raw) > MaxManifest {
 		return m, errors.New("release manifest size is invalid")
 	}
 	hash := sha256.Sum256(raw)
-	if err := rsa.VerifyPKCS1v15(key, crypto.SHA256, hash[:], signature); err != nil {
-		return m, errors.New("release signature verification failed")
-	}
 	scanner := bufio.NewScanner(bytes.NewReader(raw))
 	if !scanner.Scan() || scanner.Text() != "agenttail-manifest-v1" {
 		return m, errors.New("unsupported release manifest")
@@ -137,7 +188,7 @@ func verify(raw, signature []byte, key *rsa.PublicKey, now time.Time) (Manifest,
 	if !safeVersion.MatchString(m.Version) || m.Sequence == 0 || m.Created <= 0 || m.Created > now.Unix()+300 || m.Expires <= now.Unix() || m.Expires <= m.Created || m.Expires-m.Created > 366*86400 || len(m.Files) == 0 {
 		return m, errors.New("release is expired, future-dated, or has invalid metadata")
 	}
-	m.Raw, m.Signature, m.Digest = bytes.Clone(raw), bytes.Clone(signature), hex.EncodeToString(hash[:])
+	m.Raw, m.Signature, m.Digest = bytes.Clone(raw), bytes.Clone(proof), hex.EncodeToString(hash[:])
 	return m, nil
 }
 

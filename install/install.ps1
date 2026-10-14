@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 param(
-    [string]$Source = 'https://agenttail.mizuame.app/downloads/stable',
+    [string]$Source = 'https://agenttail.mizuame.app/downloads/current',
     [string]$Server = 'https://agenttail-api.mizuame.app',
     [string]$Vpn = '',
     [string]$SshPublicKey = '',
@@ -22,16 +22,12 @@ function Fetch-Artifact([string]$Name) {
 }
 try {
     Fetch-Artifact 'manifest.txt'
-    Fetch-Artifact 'manifest.sig'
+    Fetch-Artifact 'manifest.sha256'
     $raw = [IO.File]::ReadAllBytes((Join-Path $releaseDir 'manifest.txt'))
     if ($raw.Length -gt 65536) { throw 'Manifest too large' }
-    $signature = [IO.File]::ReadAllBytes((Join-Path $releaseDir 'manifest.sig'))
-    $rsa = New-Object Security.Cryptography.RSACryptoServiceProvider
-    $rsa.PersistKeyInCsp = $false
-    $rsa.FromXmlString('<RSAKeyValue><Modulus>zzxw79cAiFFruFRAB881cEHhBcsIEMZMgXEhmHVC8mFZpqmL18czZ/4otOA8E4n42PsYsB8WiRpxiIx1/lR6KKjeWI4IFdSyW13MANkMe4hDC3eERK9UfXRjT4zIQVU4T+4rnLm9Hq7tIv93lrkLMYkbmcLYCQXKjdNSO3/yz/n/XxnVogedWQa7SvPba71XolfDmQc3j5H87k0/HWdYbvoWKA1ILYts6fpW+l+yDih8r0XzsW+mqU9DuaiKvmY+7YvQjmHTmmdhASPN8hxWJhzCeRC16euJY2zMGVX80o9ov3fTRN+03cCiRFHPQ5h/I+p6DOLwQXNsePj7aNL3cL+sK+nomS5QbY6CEx8hVBOKGU2ONKLHc4ED1RlQKDpS7yi/0RvB/p6v+HvBAi0JZ3T2uggZ4FgyQNWpPpRhkbgVy9yLpUMsMHXfXGywFIUO18Cm+19Gee7Thv5yUiNXe/nWxBVpnG1H1BGBKRkM11HkOUTwQHXcXsUjkIMsd/VT</Modulus><Exponent>AQAB</Exponent></RSAKeyValue>')
-    try {
-        if (-not $rsa.VerifyData($raw, 'SHA256', $signature)) { throw 'Release signature verification failed' }
-    } finally { $rsa.Dispose() }
+    $checksum = [IO.File]::ReadAllBytes((Join-Path $releaseDir 'manifest.sha256'))
+    $manifestHash = (Get-FileHash -Algorithm SHA256 (Join-Path $releaseDir 'manifest.txt')).Hash.ToLowerInvariant()
+    if ([Text.Encoding]::ASCII.GetString($checksum) -cne "$manifestHash  manifest.txt`n") { throw 'Release manifest SHA-256 mismatch' }
     $lines = [Text.Encoding]::ASCII.GetString($raw).TrimEnd("`n").Split("`n")
     if ($lines[0] -ne 'agenttail-manifest-v1') { throw 'Unsupported release manifest' }
     $created = @($lines | Where-Object { $_ -match '^created [0-9]+$' })
@@ -65,7 +61,7 @@ try {
     }
     # The Go client requests UAC elevation. This script remains the invoking
     # user so skill installation uses that user's profile and privileges.
-    $arguments = @('install','--bundle',$releaseDir,'--source',$Source,'--server',$Server)
+    $arguments = @('install','--https-checksums','--bundle',$releaseDir,'--source',$Source,'--server',$Server)
     if ($NoService) { $arguments += '--no-service' }
     & $artifacts['vpn'] @arguments
     if ($LASTEXITCODE -ne 0) { throw "Installation failed: $LASTEXITCODE" }

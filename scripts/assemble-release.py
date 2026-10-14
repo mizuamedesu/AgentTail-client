@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Assemble a desktop or NanoKVM release from a successful CI run, then sign.
+"""Assemble a verified desktop or NanoKVM release from a successful CI run.
 Never accepts the ephemeral acceptance-fixture artifacts or a failed run.
 """
 import argparse
@@ -17,6 +17,7 @@ p.add_argument('--run', required=True, type=int)
 p.add_argument('--version', required=True)
 p.add_argument('--sequence', required=True, type=int)
 p.add_argument('--dir', required=True, type=Path)
+p.add_argument('--checksums', action='store_true', help='HTTPS/checksum release without a signing key')
 a = p.parse_args()
 run = json.loads(subprocess.check_output(['gh', 'run', 'view', str(a.run), '--json', 'conclusion,headSha,url,jobs'], text=True))
 if run['conclusion'] != 'success' or any(j['conclusion'] != 'success' for j in run['jobs']):
@@ -66,9 +67,12 @@ with tempfile.TemporaryDirectory(prefix='agenttail-release-') as tmp:
         target.write_bytes(raw)
         target.chmod(0o755 if name.startswith('agenttail-') and not name.endswith('.exe') else 0o644)
         files[name] = {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
-subprocess.run(['python3', 'scripts/sign-release.py', '--dir', str(a.dir), '--version', a.version, '--sequence', str(a.sequence)], check=True)
+subprocess.run(['python3', 'scripts/sign-release.py', '--dir', str(a.dir), '--version', a.version, '--sequence', str(a.sequence)]+(['--checksums'] if a.checksums else []), check=True)
 for name in ('install.sh', 'install.ps1'):
     shutil.copyfile(Path('install') / name, a.dir / name)
 shutil.copyfile('internal/notices/native.txt', a.dir / 'THIRD_PARTY_NOTICES.txt')
+for path in a.dir.iterdir():
+    if path.is_file() and not path.name.endswith('.sha256'):
+        (a.dir / (path.name+'.sha256')).write_text(hashlib.sha256(path.read_bytes()).hexdigest()+'  '+path.name+'\n', encoding='ascii', newline='\n')
 (a.dir / 'provenance.json').write_text(json.dumps({'version': a.version, 'commit': run['headSha'], 'workflow': run['url'], 'files': files}, indent=2) + '\n')
-print(f'Assembled and signed {a.profile} release at {a.dir}; source {run["headSha"]}')
+print(f'Assembled {a.profile} release at {a.dir}; source {run["headSha"]}')

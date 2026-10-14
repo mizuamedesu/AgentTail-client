@@ -572,7 +572,15 @@ func agentAcceptance(t *testing.T, native, relay bool) {
 
 func pingPacket(conn net.Conn) (time.Duration, error) {
 	defer conn.SetDeadline(time.Time{})
-	conn.SetDeadline(time.Now().Add(time.Second))
+	timeout := time.Second
+	if _, virtual := conn.(*netstack.PingConn); virtual {
+		// Race-instrumented virtual stacks on macOS ARM can deliver a valid
+		// relay echo after the native one-second probe has expired (observed
+		// 1.293s). Keep the native TUN latency gate and bound virtual probes by
+		// the enclosing recovery budget instead of closing their socket early.
+		timeout = 3 * time.Second
+	}
+	conn.SetDeadline(time.Now().Add(timeout))
 	data := make([]byte, 128)
 	rand.Read(data)
 	packet, _ := (&icmp.Message{Type: ipv4.ICMPTypeEcho, Code: 0, Body: &icmp.Echo{ID: 9321, Seq: 1, Data: data}}).Marshal(nil)

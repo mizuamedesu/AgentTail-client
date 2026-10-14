@@ -21,7 +21,14 @@ import (
 	"github.com/pion/logging"
 	"github.com/pion/turn/v5"
 	"golang.org/x/crypto/ssh"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 )
+
+// Transport recovery and TCP retransmission are separate clocks. A segment
+// lost during the outage can have backed off to the stack's maximum RTO even
+// after new ICMP traffic proves that the relay path has recovered.
+const outageSSHGrace = tcp.MaxRTO + 5*time.Second
+const outageSSHDeadline = 100*time.Second + outageSSHGrace + 20*time.Second
 
 func TestEstablishedFlowOutageFallsBackToCloudflare(t *testing.T) {
 	stopFlow, servers := outageTURNServer(t)
@@ -118,7 +125,7 @@ func verifyEstablishedFlowOutage(t *testing.T, options recoveryOptions, stopFlow
 			t.Fatal("existing SSH connection did not survive:", result.err)
 		}
 		sshElapsed = result.elapsed
-	case <-time.After(25 * time.Second):
+	case <-time.After(outageSSHGrace):
 		t.Fatal("existing SSH connection did not resume")
 	}
 	pair.mu.Lock()
@@ -206,6 +213,20 @@ func outageSSHClient(t *testing.T, pair *recoveryPair) *ssh.Client {
 	}
 	t.Cleanup(func() { listener.Close() })
 	serverDone := make(chan struct{})
+	accepted := make(chan net.Conn, 1)
+	t.Cleanup(func() {
+		listener.Close()
+		select {
+		case conn := <-accepted:
+			conn.Close()
+		default:
+		}
+		select {
+		case <-serverDone:
+		case <-time.After(5 * time.Second):
+			t.Error("SSH test server did not stop")
+		}
+	})
 	go func() {
 		defer close(serverDone)
 		conn, err := listener.Accept()
@@ -213,7 +234,8 @@ func outageSSHClient(t *testing.T, pair *recoveryPair) *ssh.Client {
 			return
 		}
 		defer conn.Close()
-		conn.SetDeadline(time.Now().Add(140 * time.Second))
+		accepted <- conn
+		conn.SetDeadline(time.Now().Add(outageSSHDeadline))
 		server, channels, requests, err := ssh.NewServerConn(conn, config)
 		if err != nil {
 			return
@@ -235,7 +257,7 @@ func outageSSHClient(t *testing.T, pair *recoveryPair) *ssh.Client {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close() })
-	conn.SetDeadline(time.Now().Add(140 * time.Second))
+	conn.SetDeadline(time.Now().Add(outageSSHDeadline))
 	cc, channels, requests, err := ssh.NewClientConn(conn, "10.203.44.2:22", &ssh.ClientConfig{
 		User: "outage-test", Auth: []ssh.AuthMethod{ssh.PublicKeys(clientKey)}, HostKeyCallback: ssh.FixedHostKey(host.PublicKey()),
 	})
@@ -243,14 +265,6 @@ func outageSSHClient(t *testing.T, pair *recoveryPair) *ssh.Client {
 		t.Fatal(err)
 	}
 	client := ssh.NewClient(cc, channels, requests)
-	t.Cleanup(func() {
-		client.Close()
-		listener.Close()
-		select {
-		case <-serverDone:
-		case <-time.After(5 * time.Second):
-			t.Error("SSH test server did not stop")
-		}
-	})
+	t.Cleanup(func() { client.Close() })
 	return client
 }

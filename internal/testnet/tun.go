@@ -48,6 +48,8 @@ type netTun struct {
 	incomingPacket chan *buffer.View
 	done           chan struct{}
 	closeOnce      sync.Once
+	outputMu       sync.Mutex
+	outputClosed   bool
 	mtu            int
 	dnsServers     []netip.Addr
 	hasV4, hasV6   bool
@@ -65,7 +67,7 @@ func CreateNetTUN(localAddresses, dnsServers []netip.Addr, mtu int) (tun.Device,
 		ep:             channel.New(1024, uint32(mtu), ""),
 		stack:          stack.New(opts),
 		events:         make(chan tun.Event, 10),
-		incomingPacket: make(chan *buffer.View),
+		incomingPacket: make(chan *buffer.View, 1024),
 		done:           make(chan struct{}),
 		dnsServers:     dnsServers,
 		mtu:            mtu,
@@ -162,6 +164,14 @@ func (tun *netTun) Write(buf [][]byte, offset int) (int, error) {
 }
 
 func (tun *netTun) WriteNotify() {
+	// Network-stack callbacks can hold protocol locks. Waiting here for the
+	// WireGuard TUN reader lets unrelated packet processing block behind that
+	// reader. Model the bounded output queue of a native TUN instead.
+	tun.outputMu.Lock()
+	defer tun.outputMu.Unlock()
+	if tun.outputClosed {
+		return
+	}
 	pkt := tun.ep.Read()
 	if pkt == nil {
 		return
@@ -172,16 +182,30 @@ func (tun *netTun) WriteNotify() {
 
 	select {
 	case tun.incomingPacket <- view:
-	case <-tun.done:
+	default:
 		view.Release()
 	}
 }
 
 func (tun *netTun) Close() error {
 	tun.closeOnce.Do(func() {
-		// RemoveNotify does not join callbacks already in flight. Unblock them
-		// through a separate channel; never close a channel they can send to.
-		close(tun.done)
+		// RemoveNotify does not join callbacks already in flight. Serialize
+		// closure with callbacks and release queued views; leave their channel
+		// open so a concurrent reader never receives a nil view.
+		func() {
+			tun.outputMu.Lock()
+			defer tun.outputMu.Unlock()
+			tun.outputClosed = true
+			close(tun.done)
+			for {
+				select {
+				case view := <-tun.incomingPacket:
+					view.Release()
+				default:
+					return
+				}
+			}
+		}()
 		tun.ep.RemoveNotify(tun.notifyHandle)
 		tun.stack.RemoveNIC(1)
 		tun.stack.Close()

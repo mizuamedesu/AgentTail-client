@@ -13,5 +13,14 @@ func (net *Net) Diagnostics() map[string]uint64 {
 		"icmp_reply_received":   s.ICMP.V4.PacketsReceived.EchoReply.Value(),
 		"icmp_invalid":          s.ICMP.V4.PacketsReceived.Invalid.Value(),
 		"dropped":               s.DroppedPackets.Value(),
+		"tcp_received":          s.TCP.ValidSegmentsReceived.Value(),
+		"tcp_invalid":           s.TCP.InvalidSegmentsReceived.Value(),
+		"tcp_checksum_errors":   s.TCP.ChecksumErrors.Value(),
+		"tcp_sent":              s.TCP.SegmentsSent.Value(),
+		"tcp_send_errors":       s.TCP.SegmentSendErrors.Value(),
+		"tcp_retransmits":       s.TCP.Retransmits.Value(),
+		"tcp_timeouts":          s.TCP.Timeouts.Value(),
+		"tcp_resets_received":   s.TCP.ResetsReceived.Value(),
+		"tcp_resets_sent":       s.TCP.ResetsSent.Value(),
 	}
 }

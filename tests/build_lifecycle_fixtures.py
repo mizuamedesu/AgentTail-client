@@ -24,7 +24,9 @@ try:
         subprocess.run(['openssl','genpkey','-algorithm','RSA','-pkeyopt','rsa_keygen_bits:3072','-out',str(key)],check=True,stderr=subprocess.DEVNULL)
         key.chmod(0o600)
         subprocess.run(['openssl','pkey','-in',str(key),'-pubout','-out',str(trust)],check=True)
-        for sequence in (1,2):
+        # Separate versions for the checksum cycle: Windows can retain a loaded
+        # executable until reboot after uninstall, while removing its DLLs now.
+        for sequence in (1,2,3,4):
             directory=f'build/lifecycle-v{sequence}'
             version=f'0.0.0-ci.{sequence}'
             subprocess.run(['python3','scripts/build-native.py','--dir',directory,'--version',version,'--os',system,'--arch',arch,'--acceptance-fixture'],check=True)

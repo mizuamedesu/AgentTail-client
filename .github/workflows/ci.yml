@@ -49,7 +49,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version: '1.27.2'
           cache: true
       - name: Verify native code
         run: go test -race -p 1 ./...
@@ -109,7 +109,7 @@ jobs:
         run: |
           python3 tests/build_lifecycle_fixtures.py
           sudo env TMPDIR=/tmp GITHUB_ACTIONS=true python3 tests/install_lifecycle.py --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --report build/native-lifecycle.json
-          sudo env TMPDIR=/tmp GITHUB_ACTIONS=true python3 tests/install_lifecycle.py --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --https-checksums --report build/checksum-lifecycle.json
+          sudo env TMPDIR=/tmp GITHUB_ACTIONS=true python3 tests/install_lifecycle.py --first build/lifecycle-v3 --second build/lifecycle-v4 --with-service --credentials --https-checksums --report build/checksum-lifecycle.json
       - name: Windows verified install/update/uninstall with SCM
         if: runner.os == 'Windows'
         shell: pwsh
@@ -118,7 +118,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python3 tests/install_lifecycle.py --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --report build/native-lifecycle.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python3 tests/install_lifecycle.py --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --https-checksums --report build/checksum-lifecycle.json
+          python3 tests/install_lifecycle.py --first build/lifecycle-v3 --second build/lifecycle-v4 --with-service --credentials --https-checksums --report build/checksum-lifecycle.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
@@ -136,7 +136,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version: '1.27.2'
           cache: true
       - run: |
           python3 scripts/build-native.py --dir build/native --version "$RELEASE_VERSION" --os linux --arch arm64
@@ -159,7 +159,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version: '1.27.2'
           cache: true
       - name: Install RISC-V emulator and BusyBox shell
         run: |
@@ -192,7 +192,7 @@ jobs:
         run: |
           python3 tests/build_lifecycle_fixtures.py --arch riscv64
           sudo python3 tests/install_lifecycle.py --arch riscv64 --emulated --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --report build/nanokvm-lifecycle.json
-          sudo python3 tests/install_lifecycle.py --arch riscv64 --emulated --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --https-checksums --report build/nanokvm-checksum-lifecycle.json
+          sudo python3 tests/install_lifecycle.py --arch riscv64 --emulated --first build/lifecycle-v3 --second build/lifecycle-v4 --with-service --credentials --https-checksums --report build/nanokvm-checksum-lifecycle.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

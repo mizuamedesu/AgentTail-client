@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -50,6 +51,8 @@ type netTun struct {
 	closeOnce      sync.Once
 	outputMu       sync.Mutex
 	outputClosed   bool
+	lastEchoID     atomic.Uint32
+	lastEchoMillis atomic.Int64
 	mtu            int
 	dnsServers     []netip.Addr
 	hasV4, hasV6   bool
@@ -148,6 +151,16 @@ func (tun *netTun) Write(buf [][]byte, offset int) (int, error) {
 		packet := buf[offset:]
 		if len(packet) == 0 {
 			continue
+		}
+		if packet[0]>>4 == 4 && len(packet) >= 28 {
+			ip := header.IPv4(packet)
+			if ip.Protocol() == uint8(header.ICMPv4ProtocolNumber) && len(packet) >= int(ip.HeaderLength())+8 {
+				icmp := header.ICMPv4(packet[ip.HeaderLength():])
+				if icmp.Type() == header.ICMPv4EchoReply {
+					tun.lastEchoID.Store(uint32(icmp.Ident()))
+					tun.lastEchoMillis.Store(time.Now().UnixMilli())
+				}
+			}
 		}
 
 		pkb := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(packet)})
@@ -496,6 +509,11 @@ func (pc *PingConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 func (pc *PingConn) Read(p []byte) (n int, err error) {
 	n, _, err = pc.ReadFrom(p)
 	return
+}
+
+func (pc *PingConn) Identifier() uint16 {
+	addr, _ := pc.ep.GetLocalAddress()
+	return addr.Port
 }
 
 func (pc *PingConn) SetDeadline(t time.Time) error {

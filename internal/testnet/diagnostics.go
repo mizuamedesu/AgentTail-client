@@ -22,5 +22,7 @@ func (net *Net) Diagnostics() map[string]uint64 {
 		"tcp_timeouts":          s.TCP.Timeouts.Value(),
 		"tcp_resets_received":   s.TCP.ResetsReceived.Value(),
 		"tcp_resets_sent":       s.TCP.ResetsSent.Value(),
+		"icmp_last_reply_id":    uint64(net.lastEchoID.Load()),
+		"icmp_last_reply_ms":    uint64(net.lastEchoMillis.Load()),
 	}
 }

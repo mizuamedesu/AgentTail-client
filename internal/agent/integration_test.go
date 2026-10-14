@@ -580,6 +580,7 @@ func pingPacket(conn net.Conn) (time.Duration, error) {
 	if _, err := conn.Write(packet); err != nil {
 		return 0, err
 	}
+	writeElapsed := time.Since(start)
 	buffer := make([]byte, 2048)
 	received := 0
 	last := "none"
@@ -592,7 +593,11 @@ func pingPacket(conn net.Conn) (time.Duration, error) {
 			n, err = conn.Read(buffer)
 		}
 		if err != nil {
-			return 0, fmt.Errorf("%w (received ICMP=%d, last=%s)", err, received, last)
+			identifier := uint16(0)
+			if ping, ok := conn.(*netstack.PingConn); ok {
+				identifier = ping.Identifier()
+			}
+			return 0, fmt.Errorf("%w (received ICMP=%d, last=%s, socket_id=%d, write_ms=%d, total_ms=%d, started_ms=%d)", err, received, last, identifier, writeElapsed.Milliseconds(), time.Since(start).Milliseconds(), start.UnixMilli())
 		}
 		received++
 		message, err := icmp.ParseMessage(1, buffer[:n])

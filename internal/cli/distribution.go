@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
@@ -7,11 +9,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mizuamedesu/AgentTail/internal/agent"
-	"github.com/mizuamedesu/AgentTail/internal/api"
-	"github.com/mizuamedesu/AgentTail/internal/distribution"
-	"github.com/mizuamedesu/AgentTail/internal/localstate"
-	"github.com/mizuamedesu/AgentTail/internal/service"
+	"github.com/mizuamedesu/AgentTail-client/internal/agent"
+	"github.com/mizuamedesu/AgentTail-client/internal/api"
+	"github.com/mizuamedesu/AgentTail-client/internal/distribution"
+	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
+	"github.com/mizuamedesu/AgentTail-client/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -47,7 +49,7 @@ func (o *options) addDistribution(root *cobra.Command) {
 	}}
 	install.Flags().StringVar(&bundle, "bundle", "", "directory containing manifest.txt, manifest.sig and native artifacts")
 	install.Flags().StringVar(&source, "source", distribution.DefaultSource, "HTTPS update source")
-	install.Flags().BoolVar(&noService, "no-service", false, "install files only (development containers without a native service manager)")
+	install.Flags().BoolVar(&noService, "no-service", false, "install files only; run the agent in the foreground")
 	required(install, "bundle")
 	root.AddCommand(install)
 	var updateBundle, updateSource string

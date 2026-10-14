@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package distribution
 
 import (
@@ -12,9 +14,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/mizuamedesu/AgentTail/internal/agent"
-	"github.com/mizuamedesu/AgentTail/internal/localstate"
-	"github.com/mizuamedesu/AgentTail/internal/service"
+	"github.com/mizuamedesu/AgentTail-client/internal/agent"
+	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
+	"github.com/mizuamedesu/AgentTail-client/internal/service"
 )
 
 type Record struct {

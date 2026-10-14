@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package netdev owns a TUN device, WireGuard encryption and virtual-IP routes.
 // It never changes DNS, forwarding, the default route, or application firewalls.
 package netdev
@@ -14,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mizuamedesu/AgentTail/internal/transport"
+	"github.com/mizuamedesu/AgentTail-client/internal/transport"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun"
 )

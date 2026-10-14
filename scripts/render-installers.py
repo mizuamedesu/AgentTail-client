@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Embed the pinned PUBLIC release key into portable bootstrap installers."""
 import base64
 from pathlib import Path

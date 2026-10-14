@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //go:build linux && !riscv64
 
 package service
@@ -7,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -39,6 +42,9 @@ WantedBy=multi-user.target
 `, unitQuote(executable), unitQuote(directory))
 }
 func Install(executable, directory string) error {
+	if useSupervisor() {
+		return applianceService.install(executable, directory)
+	}
 	if err := Validate(executable, directory); err != nil {
 		return err
 	}
@@ -50,10 +56,50 @@ func Install(executable, directory string) error {
 	}
 	return run("/usr/bin/systemctl", "enable", "--now", Name)
 }
-func Start() error   { return run("/usr/bin/systemctl", "start", Name) }
-func Stop() error    { return run("/usr/bin/systemctl", "stop", Name) }
-func Restart() error { return run("/usr/bin/systemctl", "restart", Name) }
+func useSupervisor() bool {
+	if _, err := os.Stat(filepath.Join(applianceService.configDir, "config.json")); err == nil {
+		return true
+	}
+	if _, err := os.Stat(unitPath); err == nil {
+		return false
+	}
+	return !systemdRunning()
+}
+
+func systemdRunning() bool {
+	info, err := os.Stat("/run/systemd/system")
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	info, err = os.Stat("/usr/bin/systemctl")
+	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0111 != 0
+}
+
+func Start() error {
+	if useSupervisor() {
+		return applianceService.start()
+	}
+	return run("/usr/bin/systemctl", "start", Name)
+}
+func Stop() error {
+	if useSupervisor() {
+		return applianceService.stop()
+	}
+	return run("/usr/bin/systemctl", "stop", Name)
+}
+func Restart() error {
+	if useSupervisor() {
+		if err := Stop(); err != nil {
+			return err
+		}
+		return Start()
+	}
+	return run("/usr/bin/systemctl", "restart", Name)
+}
 func Inspect() (Status, error) {
+	if useSupervisor() {
+		return applianceService.inspect()
+	}
 	result := Status{Name: Name}
 	_, err := os.Stat(unitPath)
 	if errors.Is(err, os.ErrNotExist) {
@@ -67,6 +113,9 @@ func Inspect() (Status, error) {
 	return result, nil
 }
 func Uninstall() error {
+	if useSupervisor() {
+		return applianceService.uninstall()
+	}
 	status, err := Inspect()
 	if err != nil || !status.Installed {
 		return err

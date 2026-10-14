@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
@@ -10,9 +12,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/mizuamedesu/AgentTail/internal/api"
-	"github.com/mizuamedesu/AgentTail/internal/cryptobox"
-	"github.com/mizuamedesu/AgentTail/internal/sshkeys"
+	"github.com/mizuamedesu/AgentTail-client/internal/api"
+	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
+	"github.com/mizuamedesu/AgentTail-client/internal/sshkeys"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
 )

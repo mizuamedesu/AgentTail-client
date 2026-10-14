@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """CI-only fixture binaries with an ephemeral test trust key. Never published.
 Production native artifacts must be built/uploaded BEFORE this test step.
 """

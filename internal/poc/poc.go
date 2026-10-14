@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package poc exercises real WireGuard encryption and a complete IP/TCP stack.
 // The unprivileged stack makes the same network test reproducible in CI.
 package poc
@@ -17,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	netstack "github.com/mizuamedesu/AgentTail/internal/testnet"
-	"github.com/mizuamedesu/AgentTail/internal/transport"
+	netstack "github.com/mizuamedesu/AgentTail-client/internal/testnet"
+	"github.com/mizuamedesu/AgentTail-client/internal/transport"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"

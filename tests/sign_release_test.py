@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Verify release signing with both PEM line endings and a mismatched key."""
 from pathlib import Path
 import subprocess

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package secrets
 
 // NanoKVM's Buildroot image has no systemd credential service. Keep persistent

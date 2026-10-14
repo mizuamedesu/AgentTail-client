@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package service integrates the same agent with the native boot service manager.
 package service
 

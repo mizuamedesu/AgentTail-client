@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package agent
 
 import (
@@ -15,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mizuamedesu/AgentTail/internal/transport"
+	"github.com/mizuamedesu/AgentTail-client/internal/transport"
 	"github.com/pion/logging"
 	"github.com/pion/turn/v5"
 	"golang.org/x/crypto/ssh"

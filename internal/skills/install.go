@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package skills installs public CLI guidance, never credentials or grants.
 package skills
 

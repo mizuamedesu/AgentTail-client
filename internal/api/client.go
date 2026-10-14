@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package api is the common HTTPS contract used by every native client.
 // It never accepts a plaintext account password or logs credentials/bodies.
 package api

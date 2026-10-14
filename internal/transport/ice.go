@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package transport carries already-encrypted WireGuard datagrams over ICE.
 // No account, application payload, or private WireGuard key is available here.
 package transport

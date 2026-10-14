@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package secrets stores client credentials using the native OS secret facility.
 // Key credentials and account/admin sessions occupy distinct named entries.
 package secrets

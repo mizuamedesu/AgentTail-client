@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 param(
     [string]$Source = 'https://agenttail.mizuame.app/downloads/stable',
     [string]$Server = 'https://agenttail-api.mizuame.app',
@@ -74,7 +76,7 @@ try {
         $installedCli = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'AgentTail\agenttail.cmd'
         $loginArguments = @('--server', $Server, 'vpn', 'join', '--name', $Vpn)
         if ($NoService) { $loginArguments += '--up=false' }
-        Write-Host 'Joining the VPN. Follow the approval instructions below.'
+        Write-Host 'Joining the VPN. If approval is needed, open the link printed below.'
         & $installedCli @loginArguments
         if ($LASTEXITCODE -ne 0) { throw "Device authorization or connection failed: $LASTEXITCODE" }
         if ($NoService) { Write-Host 'Authorized. Start agenttail agent run, then agenttail vpn up --name <vpn-name>.' }

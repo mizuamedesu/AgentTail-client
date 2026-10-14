@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package agent maintains key-scoped control leases and the WireGuard/ICE data
 // plane. It never loads account/admin sessions or an account vault key.
 package agent
@@ -8,11 +10,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/mizuamedesu/AgentTail/internal/api"
-	"github.com/mizuamedesu/AgentTail/internal/cryptobox"
-	"github.com/mizuamedesu/AgentTail/internal/localstate"
-	"github.com/mizuamedesu/AgentTail/internal/netdev"
-	"github.com/mizuamedesu/AgentTail/internal/transport"
+	"github.com/mizuamedesu/AgentTail-client/internal/api"
+	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
+	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
+	"github.com/mizuamedesu/AgentTail-client/internal/netdev"
+	"github.com/mizuamedesu/AgentTail-client/internal/transport"
 )
 
 const SyncInterval = 20 * time.Second

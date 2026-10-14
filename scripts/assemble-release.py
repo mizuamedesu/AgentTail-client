@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Assemble a desktop or NanoKVM release from a successful CI run, then sign.
 Never accepts the ephemeral acceptance-fixture artifacts or a failed run.
 """

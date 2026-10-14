@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package agent
 
 import (
@@ -7,8 +9,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/mizuamedesu/AgentTail/internal/netdev"
-	"github.com/mizuamedesu/AgentTail/internal/transport"
+	"github.com/mizuamedesu/AgentTail-client/internal/netdev"
+	"github.com/mizuamedesu/AgentTail-client/internal/transport"
 )
 
 // No network operation is expected: the peer already exists in this snapshot.

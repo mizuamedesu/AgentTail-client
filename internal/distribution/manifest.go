@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package distribution verifies and installs signed, versioned native releases.
 // A signed flat manifest avoids executing archive paths or extraction hooks.
 package distribution

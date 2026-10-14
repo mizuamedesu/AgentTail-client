@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package cryptobox is client-only. P, its Argon2id output, E, vault keys and
 // plaintext WireGuard private keys must never be sent to the account API.
 package cryptobox

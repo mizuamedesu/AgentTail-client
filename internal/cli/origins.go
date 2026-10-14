@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
@@ -6,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mizuamedesu/AgentTail/internal/api"
-	"github.com/mizuamedesu/AgentTail/internal/cryptobox"
+	"github.com/mizuamedesu/AgentTail-client/internal/api"
+	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
 )
 
 const defaultWebOrigin = "https://agenttail.mizuame.app"

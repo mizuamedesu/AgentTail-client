@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -eu
 umask 077
 source_url='https://agenttail.mizuame.app/downloads/stable'
@@ -45,8 +46,12 @@ if [ "$system" = linux ] && [ -z "$ssh_public$ssh_private" ]; then
     fi
     [ "$(id -u)" = 0 ] || { printf '%s\n' 'Run the NanoKVM installer as root' >&2; exit 2; }
     export GOMEMLIMIT="${GOMEMLIMIT:-64MiB}"
-  else
-    command -v systemd-creds >/dev/null 2>&1 || { printf '%s\n' 'Required command: systemd-creds (systemd >= 250)' >&2; exit 2; }
+  fi
+  if [ "$arch" != riscv64 ] && ! command -v systemd-creds >/dev/null 2>&1; then
+    printf '%s\n' 'systemd-creds is unavailable; using encrypted root-only host credentials.'
+  fi
+  if [ "$arch" != riscv64 ] && [ -z "$no_service" ] && [ ! -d /run/systemd/system ]; then
+    printf '%s\n' 'systemd is not running; using the Linux supervisor. After a container restart, run agenttail service start from its entrypoint.'
   fi
 fi
 release_dir=$(mktemp -d "${TMPDIR:-/tmp}/agenttail-install.XXXXXXXX")
@@ -96,7 +101,7 @@ fi
 printf '%s\n' 'AgentTail installed. Open a new shell to use the agenttail command.'
 if [ -n "$vpn" ]; then
   if [ "$system" = darwin ]; then installed_cli='/Library/AgentTail/agenttail'; else installed_cli='/usr/local/lib/agenttail/agenttail'; fi
-  printf '%s\n' 'Joining the VPN. Follow the approval instructions below.'
+  printf '%s\n' 'Joining the VPN. If approval is needed, open the link printed below.'
   if [ -n "$no_service" ]; then
     "$installed_cli" --server "$server" vpn join --name "$vpn" --up=false
     printf '%s\n' 'Authorized. Start agenttail agent run, then agenttail vpn up --name <vpn-name>.'

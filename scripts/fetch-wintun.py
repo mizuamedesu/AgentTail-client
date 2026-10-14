@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Download the official signed Wintun DLLs and bundled redistribution license.
 Source and pinned digest: https://www.wintun.net/ (checked 2026-09-28).
 """

@@ -1,9 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package main
 
 import (
 	"context"
-	"github.com/mizuamedesu/AgentTail/internal/cli"
-	"github.com/mizuamedesu/AgentTail/internal/platform"
+	"github.com/mizuamedesu/AgentTail-client/internal/cli"
+	"github.com/mizuamedesu/AgentTail-client/internal/platform"
 	"os"
 	"os/signal"
 )

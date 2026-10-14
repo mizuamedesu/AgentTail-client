@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
@@ -12,7 +14,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/mizuamedesu/AgentTail/internal/api"
+	"github.com/mizuamedesu/AgentTail-client/internal/api"
 	"golang.org/x/term"
 )
 

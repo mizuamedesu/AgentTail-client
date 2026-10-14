@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Produce native release artifacts. Never release a non-CGO macOS binary."""
 import argparse
 import hashlib

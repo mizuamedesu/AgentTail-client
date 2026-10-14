@@ -1,0 +1,198 @@
+name: Verification and native builds
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Native artifact version (signed separately on release host)
+        default: 0.1.0-dev.19
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  RELEASE_VERSION: ${{ inputs.version || '0.1.0-dev.19' }}
+jobs:
+  installers:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: python3 scripts/render-installers.py && git diff --exit-code -- install/
+      - run: sudo apt-get update -qq && sudo apt-get install -y busybox
+      - run: sudo python3 tests/bootstrap_test.py
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            os: linux
+            arch: amd64
+          - runner: macos-15-intel
+            os: darwin
+            arch: amd64
+          - runner: macos-15
+            os: darwin
+            arch: arm64
+          - runner: windows-2025
+            os: windows
+            arch: amd64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - name: Verify native code
+        run: go test -race ./...
+      - name: Verify release signing and public-key pinning
+        run: python3 tests/sign_release_test.py
+      - name: Build with production release trust key
+        env:
+          NATIVE_OS: ${{ matrix.os }}
+          NATIVE_ARCH: ${{ matrix.arch }}
+        run: |
+          python3 scripts/build-native.py --dir build/native --version "$RELEASE_VERSION" --os "$NATIVE_OS" --arch "$NATIVE_ARCH"
+      - name: Linux native secret store, TUN, deadline, ping and SSH
+        if: runner.os == 'Linux'
+        run: |
+          go test -c -o build/secrets.test ./internal/secrets
+          sudo env AGENTTAIL_TEST_NATIVE_SECRETS=1 ./build/secrets.test -test.v
+          go test -c -o build/cli.test ./internal/cli
+          sudo env AGENTTAIL_TEST_NATIVE_SECRETS=1 ./build/cli.test -test.run '^TestNativeVPNJoinRecovery$' -test.v
+          go test -c -o build/agent.test ./internal/agent
+          sudo env AGENTTAIL_TEST_NATIVE_TUN=1 AGENTTAIL_TEST_PRODUCTION_LEASE=1 AGENTTAIL_ACCEPTANCE_REPORT="$GITHUB_WORKSPACE/build/native-agent.json" ./build/agent.test -test.run '^TestNativeTUNAgentAcceptance$' -test.v
+      - name: macOS System Keychain
+        if: runner.os == 'macOS'
+        run: |
+          go test -c -o build/secrets.test ./internal/secrets
+          sudo env TMPDIR=/private/tmp AGENTTAIL_TEST_NATIVE_SECRETS=1 ./build/secrets.test -test.v
+          go test -c -o build/cli.test ./internal/cli
+          sudo env TMPDIR=/private/tmp AGENTTAIL_TEST_NATIVE_SECRETS=1 ./build/cli.test -test.run '^TestNativeVPNJoinRecovery$' -test.v
+          go test -c -o build/agent.test ./internal/agent
+          sudo env TMPDIR=/private/tmp AGENTTAIL_TEST_NATIVE_TUN=1 AGENTTAIL_ACCEPTANCE_REPORT="$GITHUB_WORKSPACE/build/native-agent.json" ./build/agent.test -test.run '^TestNativeTUNAgentAcceptance$' -test.v
+      - name: Windows machine DPAPI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tokens = $null; $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE 'install/install.ps1'), [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          $env:AGENTTAIL_TEST_NATIVE_SECRETS='1'
+          go test -count=1 -v ./internal/secrets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -count=1 -run '^TestNativeVPNJoinRecovery$' -v ./internal/cli
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -c -o build/agent-native.test.exe ./internal/agent
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item build/native/wintun-windows-amd64.dll build/wintun.dll
+          $env:AGENTTAIL_TEST_NATIVE_TUN='1'
+          $env:AGENTTAIL_ACCEPTANCE_REPORT=Join-Path $env:GITHUB_WORKSPACE 'build/native-agent.json'
+          & ./build/agent-native.test.exe '-test.run=^TestNativeTUNAgentAcceptance$' '-test.v'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-${{ matrix.os }}-${{ matrix.arch }}
+          path: build/native/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Isolated signed install/update/uninstall with real service
+        if: runner.os != 'Windows'
+        run: |
+          python3 tests/build_lifecycle_fixtures.py
+          sudo env TMPDIR=/tmp GITHUB_ACTIONS=true python3 tests/install_lifecycle.py --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --report build/native-lifecycle.json
+      - name: Windows verified install/update/uninstall with SCM
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python3 tests/build_lifecycle_fixtures.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python3 tests/install_lifecycle.py --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --report build/native-lifecycle.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: evidence-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            build/native-lifecycle.json
+            build/native-agent.json
+          retention-days: 14
+  cross-builds:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - run: |
+          python3 scripts/build-native.py --dir build/native --version "$RELEASE_VERSION" --os linux --arch arm64
+          python3 scripts/build-native.py --dir build/native --version "$RELEASE_VERSION" --os windows --arch arm64
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-cross-arm64
+          path: build/native/
+          retention-days: 14
+          if-no-files-found: error
+  nanokvm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GOOS: linux
+      GOARCH: riscv64
+      GORISCV64: rva20u64
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - name: Install RISC-V emulator and BusyBox shell
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y qemu-user qemu-user-binfmt binfmt-support busybox-static
+          sudo update-binfmts --enable qemu-riscv64
+      - name: Verify RISC-V code and streamed signed installer
+        run: |
+          go test -exec /usr/bin/qemu-riscv64 ./...
+          sudo python3 tests/bootstrap_test.py
+          go test -c -o build/nanokvm-secrets.test ./internal/secrets
+          sudo env AGENTTAIL_TEST_NATIVE_SECRETS=1 /usr/bin/qemu-riscv64 build/nanokvm-secrets.test -test.v
+          go test -c -o build/nanokvm-cli.test ./internal/cli
+          sudo env AGENTTAIL_TEST_NATIVE_SECRETS=1 /usr/bin/qemu-riscv64 build/nanokvm-cli.test -test.run '^TestNativeVPNJoinRecovery$' -test.v
+          go test -c -o build/nanokvm-service.test ./internal/service
+          sudo env AGENTTAIL_TEST_RUNNER=/usr/bin/qemu-riscv64 AGENTTAIL_TEST_BINARY="$GITHUB_WORKSPACE/build/nanokvm-service.test" /usr/bin/qemu-riscv64 build/nanokvm-service.test -test.v
+          go test -c -o build/nanokvm-agent.test ./internal/agent
+          sudo env AGENTTAIL_TEST_NATIVE_TUN=1 AGENTTAIL_TEST_PRODUCTION_LEASE=1 AGENTTAIL_ACCEPTANCE_REPORT="$GITHUB_WORKSPACE/build/nanokvm-agent.json" /usr/bin/qemu-riscv64 build/nanokvm-agent.test -test.run '^TestNativeTUNAgentAcceptance$' -test.v
+      - name: Build production NanoKVM artifact
+        run: |
+          python3 scripts/build-native.py --dir build/native --version "$RELEASE_VERSION" --os linux --arch riscv64
+          /usr/bin/qemu-riscv64 build/native/agenttail-linux-riscv64 version --json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-linux-riscv64
+          path: build/native/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Install, service, credential-preserving update and uninstall under emulation
+        run: |
+          python3 tests/build_lifecycle_fixtures.py --arch riscv64
+          sudo python3 tests/install_lifecycle.py --arch riscv64 --emulated --first build/lifecycle-v1 --second build/lifecycle-v2 --with-service --credentials --report build/nanokvm-lifecycle.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: evidence-nanokvm
+          path: |
+            build/nanokvm-lifecycle.json
+            build/nanokvm-agent.json
+          retention-days: 14

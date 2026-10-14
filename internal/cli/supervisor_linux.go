@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
-	"github.com/mizuamedesu/AgentTail/internal/service"
+	"github.com/mizuamedesu/AgentTail-client/internal/service"
 	"github.com/spf13/cobra"
 )
 

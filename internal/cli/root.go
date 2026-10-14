@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
@@ -9,10 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mizuamedesu/AgentTail/internal/api"
-	"github.com/mizuamedesu/AgentTail/internal/localstate"
-	"github.com/mizuamedesu/AgentTail/internal/notices"
-	"github.com/mizuamedesu/AgentTail/internal/platform"
+	"github.com/mizuamedesu/AgentTail-client/internal/api"
+	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
+	"github.com/mizuamedesu/AgentTail-client/internal/notices"
+	"github.com/mizuamedesu/AgentTail-client/internal/platform"
 	"github.com/spf13/cobra"
 )
 
@@ -85,7 +87,7 @@ func Run(ctx context.Context, args []string, version string) int {
 		return o.print(map[string]any{"version": version, "api_version": 1})
 	}})
 	root.AddCommand(&cobra.Command{Use: "licenses", Short: "Show bundled third-party license notices", Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error {
-		return o.print(map[string]string{"notices": notices.Text})
+		return o.print(map[string]string{"license": "GPL-3.0-or-later", "source": notices.SourceURL, "license_text": notices.GPL, "notices": notices.Text})
 	}})
 	configure := &cobra.Command{Use: "configure", Short: "Configure the API and Web origins", Args: cobra.NoArgs}
 	configure.RunE = func(*cobra.Command, []string) error { return o.configure() }

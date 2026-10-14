@@ -1,4 +1,4 @@
-module github.com/mizuamedesu/AgentTail
+module github.com/mizuamedesu/AgentTail-client
 
 go 1.27.1
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Exercise the streamed BusyBox installer using signed local fixtures only."""
 import hashlib
 import os
@@ -28,7 +29,7 @@ class BootstrapTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temporary.cleanup()
 
-    def attempt(self, cpu, arch, *, source=None, tamper=None, system='Linux', options=()):
+    def attempt(self, cpu, arch, *, source=None, tamper=None, system='Linux', options=(), systemd=True):
         with tempfile.TemporaryDirectory(dir=self.root) as directory:
             base = Path(directory)
             binaries = base / 'bin'
@@ -50,10 +51,14 @@ class BootstrapTests(unittest.TestCase):
                 'curl': '#!'+sys.executable+'\nimport os, pathlib, shutil, sys\na=sys.argv[1:]\nname=a[-1].rsplit("/",1)[1]\nshutil.copyfile(pathlib.Path(os.environ["BOOT_FILES"])/name, a[a.index("--output")+1])\nwith open(os.environ["BOOT_FETCH"],"a") as f: f.write(a[-1]+"\\n")\n',
             }
             for name, script in stubs.items():
+                if name == 'systemd-creds' and not systemd:
+                    continue
                 path = binaries/name
                 path.write_text(script)
                 path.chmod(0o755)
-            env = dict(os.environ, PATH=str(binaries)+os.pathsep+os.environ['PATH'], BOOT_OS=system, BOOT_CPU=cpu, BOOT_FILES=str(base), BOOT_EXEC=str(base/'executed'), BOOT_FETCH=str(base/'fetched'))
+            for name in ['awk', 'openssl', 'date', 'mktemp', 'rm', 'chmod', 'wc', 'tr', 'cat', 'id']:
+                (binaries/name).symlink_to(shutil.which(name))
+            env = dict(os.environ, PATH=str(binaries), BOOT_OS=system, BOOT_CPU=cpu, BOOT_FILES=str(base), BOOT_EXEC=str(base/'executed'), BOOT_FETCH=str(base/'fetched'))
             script = (ROOT/'install/install.sh.in').read_text().replace('@PUBLIC_PEM@', self.public.strip())
             # Standalone BusyBox ash resolves its uname applet before PATH.
             # A shell function supplies the simulated kernel CPU in both shells.
@@ -87,6 +92,15 @@ class BootstrapTests(unittest.TestCase):
                 result, executed, _ = self.attempt('riscv64','riscv64',tamper=tamper)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(executed, '')
+
+    def test_linux_without_systemd_creds_executes_verified_installer(self):
+        for cpu, arch in [('x86_64', 'amd64'), ('aarch64', 'arm64')]:
+            with self.subTest(cpu=cpu):
+                result, executed, fetched = self.attempt(cpu, arch, systemd=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('using encrypted root-only host credentials', result.stdout)
+                self.assertIn('install\n--bundle\n', executed)
+                self.assertIn(f'/agenttail-linux-{arch}', fetched)
 
     def test_private_key_needs_only_its_name(self):
         result, executed, _ = self.attempt('x86_64', 'amd64', options=['--ssh-private-key', 'work laptop'])

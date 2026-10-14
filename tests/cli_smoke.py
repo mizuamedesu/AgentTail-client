@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Native CLI + local Wrangler smoke test. Requires a PTY and native root/admin.
 
 Run against a development Worker only; all passwords are public test fixtures.

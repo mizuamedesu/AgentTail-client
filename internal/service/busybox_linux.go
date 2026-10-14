@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package service
 
 import (
@@ -14,13 +16,22 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mizuamedesu/AgentTail/internal/localstate"
-	"github.com/mizuamedesu/AgentTail/internal/secrets"
+	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
+	"github.com/mizuamedesu/AgentTail-client/internal/secrets"
 	"golang.org/x/sys/unix"
 )
 
-const initMarker = "#!/bin/sh\n# AgentTail managed NanoKVM service\n"
+const initMarker = "#!/bin/sh\n# AgentTail managed Linux service\n"
+const legacyInitMarker = "#!/bin/sh\n# AgentTail managed NanoKVM service\n"
 const maxFailureOutput = 4096
+
+var applianceService = busyboxService{
+	configDir:  "/etc/agenttail-service",
+	runtimeDir: "/var/run/agenttail-service",
+	initPath:   "/etc/init.d/S99agenttail",
+}
+
+func Supervise(ctx context.Context) error { return applianceService.supervise(ctx) }
 
 // Retain only the tail of stderr from one child, never a growing log on the SD
 // card. exec.Cmd finishes copying this writer before Wait returns.
@@ -94,7 +105,7 @@ func (b busyboxService) config() (busyboxConfig, error) {
 		return c, err
 	}
 	if json.Unmarshal(data, &c) != nil {
-		return c, errors.New("invalid NanoKVM service configuration")
+		return c, errors.New("invalid Linux service configuration")
 	}
 	return c, Validate(c.Executable, c.Directory)
 }
@@ -116,8 +127,8 @@ func (b busyboxService) install(executable, directory string) error {
 		return err
 	}
 	defer unlock()
-	if data, e := os.ReadFile(b.initPath); e == nil && !strings.HasPrefix(string(data), initMarker) {
-		return errors.New("NanoKVM service script is not managed by AgentTail")
+	if data, e := os.ReadFile(b.initPath); e == nil && !strings.HasPrefix(string(data), initMarker) && !strings.HasPrefix(string(data), legacyInitMarker) {
+		return errors.New("Linux service script is not managed by AgentTail")
 	} else if e != nil && !errors.Is(e, os.ErrNotExist) {
 		return e
 	}
@@ -259,11 +270,11 @@ func (b busyboxService) startLocked() error {
 		select {
 		case exit := <-done:
 			failure, _ := b.lastFailure()
-			return fmt.Errorf("NanoKVM supervisor exited before startup: %v; %s", exit, failure)
+			return fmt.Errorf("Linux supervisor exited before startup: %v; %s", exit, failure)
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
-	return errors.New("NanoKVM supervisor did not start")
+	return errors.New("Linux supervisor did not start")
 }
 func (b busyboxService) stop() error {
 	unlock, err := b.lock()
@@ -293,7 +304,7 @@ func (b busyboxService) stopLocked() error {
 		current.Release()
 		time.Sleep(50 * time.Millisecond)
 	}
-	return errors.New("NanoKVM supervisor did not stop; installation retained")
+	return errors.New("Linux supervisor did not stop; installation retained")
 }
 func (b busyboxService) uninstall() error {
 	unlock, err := b.lock()

@@ -1,10 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/mizuamedesu/AgentTail/internal/cryptobox"
+	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
 	"golang.org/x/term"
 	"os"
 	"strings"

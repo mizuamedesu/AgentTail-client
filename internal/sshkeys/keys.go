@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package sshkeys installs OpenSSH identities for the invoking OS user. It does
 // not load machine VPN credentials or account/vault credentials.
 package sshkeys

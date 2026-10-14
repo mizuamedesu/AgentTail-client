@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
@@ -14,9 +16,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/mizuamedesu/AgentTail/internal/api"
-	"github.com/mizuamedesu/AgentTail/internal/cryptobox"
-	"github.com/mizuamedesu/AgentTail/internal/localstate"
+	"github.com/mizuamedesu/AgentTail-client/internal/api"
+	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
+	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
 )
 
 func TestDeviceAuthorizationProbe(t *testing.T) {

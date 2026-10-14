@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package localstate
 
 import (
@@ -8,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mizuamedesu/AgentTail/internal/secrets"
+	"github.com/mizuamedesu/AgentTail-client/internal/secrets"
 )
 
 func TestWaitAgentLockWaitsForShutdown(t *testing.T) {

@@ -1,9 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
 	"encoding/json"
 	"errors"
-	"github.com/mizuamedesu/AgentTail/internal/cryptobox"
+	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
 	"strings"
 )
 

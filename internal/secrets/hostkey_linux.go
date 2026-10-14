@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package secrets
 
 import (
@@ -18,7 +20,8 @@ const hostCredentialVersion = "agenttail-host-credential-v1\x00"
 
 // This protects against disclosure of a credential file, not root compromise
 // or a full SD-card image: the random host key is root-only on the same device.
-// Existing systemd, Keychain and DPAPI stores do not use this backend.
+// Linux without systemd-creds uses this backend, including NanoKVM. Existing
+// systemd credentials retain their provider; Keychain and DPAPI are unchanged.
 func readHostFile(path string, limit int64) ([]byte, error) {
 	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if err != nil {

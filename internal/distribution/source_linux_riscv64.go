@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package distribution
 
 // Older desktop clients reject manifests containing an unknown CPU.

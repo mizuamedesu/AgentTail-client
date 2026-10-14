@@ -1,4 +1,6 @@
-//go:build !linux || !riscv64
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//go:build !linux
 
 package cli
 

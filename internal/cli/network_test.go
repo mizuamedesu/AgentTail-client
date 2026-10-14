@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
@@ -6,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mizuamedesu/AgentTail/internal/agent"
-	"github.com/mizuamedesu/AgentTail/internal/api"
+	"github.com/mizuamedesu/AgentTail-client/internal/agent"
+	"github.com/mizuamedesu/AgentTail-client/internal/api"
 )
 
 func TestActivationWaitsForRecovery(t *testing.T) {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //go:build acceptance
 
 package cli
@@ -6,8 +8,8 @@ package cli
 // with an ephemeral test trust key. Production artifacts never enable this tag.
 import (
 	"github.com/google/uuid"
-	"github.com/mizuamedesu/AgentTail/internal/cryptobox"
-	"github.com/mizuamedesu/AgentTail/internal/localstate"
+	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
+	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
 	"github.com/spf13/cobra"
 	"time"
 )

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package cli
 
 import (
@@ -9,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mizuamedesu/AgentTail/internal/cryptobox"
-	"github.com/mizuamedesu/AgentTail/internal/localstate"
+	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
+	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
 )
 
 func TestResolveOrigins(t *testing.T) {

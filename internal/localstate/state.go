@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package localstate
 
 import (
@@ -7,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mizuamedesu/AgentTail/internal/secrets"
+	"github.com/mizuamedesu/AgentTail-client/internal/secrets"
 )
 
 const Version = 1

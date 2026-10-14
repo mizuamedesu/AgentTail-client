@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Native install/update/uninstall acceptance. Uses isolated empty client state.
 Refuses to replace any existing installation. Needs an elevated terminal and
 two signed bundles with increasing sequence numbers. --with-service requires

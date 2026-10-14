@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package agent
 
 import (
@@ -11,12 +13,12 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
-	"github.com/mizuamedesu/AgentTail/internal/api"
-	"github.com/mizuamedesu/AgentTail/internal/cryptobox"
-	"github.com/mizuamedesu/AgentTail/internal/localstate"
-	"github.com/mizuamedesu/AgentTail/internal/netdev"
-	netstack "github.com/mizuamedesu/AgentTail/internal/testnet"
-	"github.com/mizuamedesu/AgentTail/internal/transport"
+	"github.com/mizuamedesu/AgentTail-client/internal/api"
+	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
+	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
+	"github.com/mizuamedesu/AgentTail-client/internal/netdev"
+	netstack "github.com/mizuamedesu/AgentTail-client/internal/testnet"
+	"github.com/mizuamedesu/AgentTail-client/internal/transport"
 )
 
 func TestUnansweredDirectOfferFallsBackToRelay(t *testing.T) {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package secrets
 
 import (
@@ -47,7 +49,7 @@ func TestNativeSecretRoundTripAndScope(t *testing.T) {
 		}
 		credentials := files[:0]
 		for _, file := range files {
-			if runtime.GOOS == "linux" && runtime.GOARCH == "riscv64" && file.Name() == "host.key" {
+			if runtime.GOOS == "linux" && file.Name() == "host.key" {
 				continue
 			}
 			credentials = append(credentials, file)

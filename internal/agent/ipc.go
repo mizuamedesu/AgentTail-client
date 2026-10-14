@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package agent
 
 import (
@@ -10,7 +12,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/mizuamedesu/AgentTail/internal/api"
+	"github.com/mizuamedesu/AgentTail-client/internal/api"
 )
 
 func LocalRequest(ctx context.Context, directory, keyID, action string, output any) error {

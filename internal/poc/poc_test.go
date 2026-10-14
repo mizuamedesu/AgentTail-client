@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package poc
 
 import (
@@ -7,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mizuamedesu/AgentTail/internal/transport"
+	"github.com/mizuamedesu/AgentTail-client/internal/transport"
 	"github.com/pion/turn/v5"
 )
 

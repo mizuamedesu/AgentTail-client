@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Sign existing native build outputs. Private key stays on the signing host.
 Usage: python3 scripts/sign-release.py --version 0.1.0 --sequence 1 --dir build/release
 Native macOS outputs MUST be built with CGO_ENABLED=1 on macOS.

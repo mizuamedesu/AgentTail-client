@@ -27,8 +27,9 @@ with tempfile.TemporaryDirectory(prefix='agenttail-source-') as temporary:
     root = Path(temporary)
     with tarfile.open(fileobj=io.BytesIO(archive)) as exported:
         exported.extractall(root, filter='data')
-    if (root/'apps/worker').exists() or (root/'wrangler.jsonc').exists():
-        p.error('source archive contains backend implementation')
+    forbidden = ['apps', 'packages', 'package.json', 'package-lock.json', 'wrangler.jsonc', 'migrations']
+    if any((root/name).exists() for name in forbidden):
+        p.error('source archive contains Web, browser packages or backend implementation')
     subprocess.run(['go', 'mod', 'vendor'], cwd=root, check=True)
     (root/'SOURCE.json').write_text(json.dumps({
         'version': a.version, 'commit': commit,

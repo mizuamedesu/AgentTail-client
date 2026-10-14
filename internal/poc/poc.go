@@ -192,7 +192,11 @@ func sshProbe(ctx context.Context, a, b *netstack.Net, target string) (string, e
 // CheckSSH verifies public-key authentication, host-key pinning and a command
 // round trip. Both the netstack PoC and native TUN acceptance use this probe.
 func CheckSSH(ctx context.Context, dial func(context.Context, string, string) (net.Conn, error), listener net.Listener, target string) (string, error) {
-	return checkSSH(ctx, dial, listener, target, time.Now().Add(15*time.Second))
+	deadline := time.Now().Add(15 * time.Second)
+	if overall, ok := ctx.Deadline(); ok {
+		deadline = overall
+	}
+	return checkSSH(ctx, dial, listener, target, deadline)
 }
 
 func checkSSH(ctx context.Context, dial func(context.Context, string, string) (net.Conn, error), listener net.Listener, target string, deadline time.Time) (string, error) {

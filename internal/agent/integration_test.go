@@ -410,10 +410,20 @@ func agentAcceptance(t *testing.T, native, relay bool) {
 	if native {
 		dial = (&net.Dialer{}).DialContext
 	}
-	ssh, err := poc.CheckSSH(ctx, dial, listener, target)
+	sshBudget := 15 * time.Second
+	if !native {
+		// Race-instrumented virtual TCP can delay a retransmission. Give this
+		// fixture the same bounded budget as the virtual network PoC; native
+		// TUN acceptance keeps its fifteen-second SSH deadline.
+		sshBudget = 30 * time.Second
+	}
+	sshCtx, sshCancel := context.WithTimeout(ctx, sshBudget)
+	sshStarted := time.Now()
+	ssh, err := poc.CheckSSH(sshCtx, dial, listener, target)
+	sshCancel()
 	listener.Close()
 	if err != nil {
-		t.Fatal("virtual IP SSH:", err)
+		t.Fatalf("virtual IP SSH after %s (budget %s): %v", time.Since(sshStarted), sshBudget, err)
 	}
 	statusJSON, _ := json.Marshal(keys[0].Status())
 	if bytes.Contains(statusJSON, []byte(base64.StdEncoding.EncodeToString(private[0]))) || bytes.Contains(statusJSON, []byte(c.keys[meta[0].ID].token)) {

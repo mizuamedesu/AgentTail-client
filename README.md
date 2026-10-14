@@ -1,8 +1,11 @@
 # AgentTail native client
 
 AgentTail が利用者に配布する CLI / VPN エージェントのソースを GPL-3.0-or-later で公開しています。
-Linux・macOS・Windows・NanoKVM のバイナリー、インストーラー、更新・削除、OS 保管・サービス、
+Linux（amd64 / arm64 / riscv64）、macOS（amd64 / arm64）、Windows（amd64 / arm64）の
+バイナリー、インストーラー、更新・削除、OS 保管・サービス、
 同梱スキル、ビルドと検証用スクリプトを含みます。
+
+RISC-V の配布対象は Linux/riscv64（64-bit、RV64GC）です。
 
 Web UI、ブラウザー用の暗号/共有パッケージ、Workers、D1、課金・運用処理は非公開リポジトリで管理します。
 このリポジトリとソース archive に Web のコード・履歴は含めません。

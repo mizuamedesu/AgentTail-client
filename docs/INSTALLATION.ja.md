@@ -3,7 +3,8 @@
 公式配布は `https://agenttail.mizuame.app/install.sh` と `install.ps1` を使用します。
 インストーラーは HTTPS で取得した manifest の SHA-256、各ファイルのハッシュ・サイズ・期限を検証します。
 `install.sh.sha256` と `install.ps1.sha256` も配布します。配布元の認証は HTTPS に依存します。
-新規導入は `current`、NanoKVM は `current-nanokvm` チャネルを使用します。
+新規導入は `current`、Linux/riscv64 は専用の `current-nanokvm` チャネルを使用します。
+配布 URL の `nanokvm` は従来のチャネル名で、対象アーキテクチャは RISC-V（Linux/riscv64）です。
 従来の署名付き `stable` / `nanokvm` は保持し、既存の更新は署名検証を継続します。
 公式インストーラーの再実行で新方式へ移行でき、既存の資格情報を保持します。
 `--vpn <VPN ID>` で参加、`--no-service` でサービスなしの導入を選択できます。
@@ -22,7 +23,8 @@ entrypoint から `agenttail service start` を実行してください。
 VPN 通信には `/dev/net/tun` と `CAP_NET_ADMIN` が必要です。
 この権限がない環境でも CLI の導入・承認はできますが、VPN 接続には実行環境の権限設定が必要です。
 
-NanoKVM の riscv64 版は `/etc/agenttail` に host 形式で保存し、BusyBox init を使用します。
+Linux/riscv64 版は `/etc/agenttail` に host 形式で保存し、常駐サービスには BusyBox init を使用します。
+別の init を使う環境では `--no-service` で導入し、エージェントをフォアグラウンドで実行します。
 macOS は Keychain、Windows は machine DPAPI を使用します。
 
 ビルド:

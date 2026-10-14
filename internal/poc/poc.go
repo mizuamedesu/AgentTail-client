@@ -182,12 +182,22 @@ func sshProbe(ctx context.Context, a, b *netstack.Net, target string) (string, e
 		return "", err
 	}
 	defer listener.Close()
-	return CheckSSH(ctx, a.DialContext, listener, target)
+	deadline := time.Now().Add(15 * time.Second)
+	if overall, ok := ctx.Deadline(); ok {
+		deadline = overall // Virtual probe remains inside Run's total budget.
+	}
+	return checkSSH(ctx, a.DialContext, listener, target, deadline)
 }
 
 // CheckSSH verifies public-key authentication, host-key pinning and a command
 // round trip. Both the netstack PoC and native TUN acceptance use this probe.
 func CheckSSH(ctx context.Context, dial func(context.Context, string, string) (net.Conn, error), listener net.Listener, target string) (string, error) {
+	return checkSSH(ctx, dial, listener, target, time.Now().Add(15*time.Second))
+}
+
+func checkSSH(ctx context.Context, dial func(context.Context, string, string) (net.Conn, error), listener net.Listener, target string, deadline time.Time) (string, error) {
+	clientDone := make(chan struct{})
+	defer close(clientDone)
 	_, hostPrivate, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return "", err
@@ -219,7 +229,7 @@ func CheckSSH(ctx context.Context, dial func(context.Context, string, string) (n
 			return
 		}
 		defer conn.Close()
-		conn.SetDeadline(time.Now().Add(15 * time.Second))
+		conn.SetDeadline(deadline)
 		s, channels, requests, err := ssh.NewServerConn(conn, serverConfig)
 		if err != nil {
 			serverDone <- err
@@ -248,6 +258,15 @@ func CheckSSH(ctx context.Context, dial func(context.Context, string, string) (n
 				ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{0}))
 				ch.Close()
 				serverDone <- err
+				// A channel close does not acknowledge delivery of its output.
+				// Retain the TCP connection until the client has consumed it.
+				timer := time.NewTimer(time.Until(deadline))
+				defer timer.Stop()
+				select {
+				case <-clientDone:
+				case <-ctx.Done():
+				case <-timer.C:
+				}
 				return
 			}
 		}
@@ -257,21 +276,21 @@ func CheckSSH(ctx context.Context, dial func(context.Context, string, string) (n
 		return "", err
 	}
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(15 * time.Second))
+	conn.SetDeadline(deadline)
 	cc, chans, reqs, err := ssh.NewClientConn(conn, target+":22", &ssh.ClientConfig{User: "poc", Auth: []ssh.AuthMethod{ssh.PublicKeys(clientKey)}, HostKeyCallback: ssh.FixedHostKey(host.PublicKey()), Timeout: 10 * time.Second})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("SSH client handshake: %w", err)
 	}
 	client := ssh.NewClient(cc, chans, reqs)
 	defer client.Close()
 	session, err := client.NewSession()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("SSH session open: %w", err)
 	}
 	defer session.Close()
 	output, err := session.Output("agenttail-poc")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("SSH command: %w", err)
 	}
 	if err := <-serverDone; err != nil {
 		return "", err

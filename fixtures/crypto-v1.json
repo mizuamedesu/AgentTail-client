@@ -1,0 +1,37 @@
+{
+  "password": "twelve words? 日本語と🔐 password",
+  "salt": "BwcHBwcHBwcHBwcHBwcHBw",
+  "kdf": {
+    "algorithm": "argon2id",
+    "version": 19,
+    "memory_kib": 65536,
+    "iterations": 3,
+    "parallelism": 1
+  },
+  "a": "vX42Ke_jXXc-X92Q2Al_v9Il13FxrtKtTSAWeyykFU8",
+  "e": "IBJwGf-dqwZWmqI7Lhda3H3VjZ5aY-18caKjvbHoKIo",
+  "owner": "test-owner",
+  "key_id": "12345678-1234-4234-8234-123456789abc",
+  "private": "CAsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLC0s",
+  "public": "c7LYt2qptTZgAyvI9di+46OuTjs6f9Sa3oH3NHo0qmg=",
+  "vault": "FxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxc",
+  "vault_box": {
+    "version": 1,
+    "nonce": "AgICAgICAgICAgIC",
+    "ciphertext": "OxOh_FvT74zhIIXcgv2g7HQI6iHe8rfNPNIff49w0rLmcna_UNqmkMvLDNxsWMXw"
+  },
+  "key_box": {
+    "version": 1,
+    "nonce": "AwMDAwMDAwMDAwMD",
+    "ciphertext": "hXDdBJGWOsbJIjBAbMhc2WJuRZgc_PE-tdLNodUT38NKQ9tasjaoM45I4_296b52"
+  },
+  "recipient_private": "t9wTOsPM6BoSh9a79afQDi-m3maAUWBV2EbDmwC7sow",
+  "recipient_public": "UgzTt7ob-n8oIpt6Pr-4XjEZq0rxr8LohdtNGl0x1lA",
+  "recipient_fingerprint": "SHA256:yg9dlI7g0qr0WnYxGjbkiNvN9ZT-_mjY8B-jwRTbUpw",
+  "transfer": {
+    "version": 1,
+    "nonce": "IFLYbNP8pThUNnHc",
+    "ciphertext": "6KMvoyIhObnc00Ffqe6DdC-mG-bi8xgxvxhSA8IyWavtv0lb_6L5ynkbCZGW92q-",
+    "sender_public": "0jvz0IyKA_VLtaLxvHy8S8a6f5eBQgvm9QIqjniqrEI"
+  }
+}

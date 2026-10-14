@@ -1,0 +1,12 @@
+{
+  "stable": {
+    "version": "0.1.0-dev.18",
+    "sequence": 2026100501,
+    "manifest_sha256": "d800ee839f5cf8ec48447654c5f869f3ab8ce9ba25a8c62486890719aef65c48"
+  },
+  "nanokvm": {
+    "version": "0.1.0-dev.18",
+    "sequence": 2026100502,
+    "manifest_sha256": "c3540b93da22a2b8f9bec8f3f7d04fe4aa3e66d0c58e7c85a9d0e2f5f2e919e8"
+  }
+}

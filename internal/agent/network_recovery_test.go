@@ -42,11 +42,12 @@ func (t *observedTUN) Close() error {
 }
 
 type recoveryPair struct {
-	control  *testControl
-	keys     [2]*Key
-	mu       sync.Mutex
-	networks [2]*netstack.Net
-	tuns     [2]*observedTUN
+	control   *testControl
+	keys      [2]*Key
+	mu        sync.Mutex
+	networks  [2]*netstack.Net
+	tuns      [2]*observedTUN
+	pingError string
 }
 
 type recoveryOptions struct {
@@ -189,6 +190,9 @@ func newRecoveryPairWithOptions(t *testing.T, options recoveryOptions) *recovery
 				t.Logf("recovery state: %+v", key.Status())
 			}
 			pair.mu.Lock()
+			if pair.pingError != "" {
+				t.Logf("last encrypted ping error: %s", pair.pingError)
+			}
 			for i, n := range pair.networks {
 				if n != nil {
 					t.Logf("recovery stack %d: %+v", i, n.Diagnostics())
@@ -223,6 +227,13 @@ func (p *recoveryPair) ping(target string) bool {
 	}
 	defer connection.Close()
 	_, err = pingPacket(connection)
+	p.mu.Lock()
+	if err != nil {
+		p.pingError = err.Error()
+	} else {
+		p.pingError = ""
+	}
+	p.mu.Unlock()
 	return err == nil
 }
 

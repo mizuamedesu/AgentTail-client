@@ -126,11 +126,14 @@ func Run(ctx context.Context, args []string, version string) int {
 	if ctx.Err() != nil {
 		problem = &api.Error{Code: "NETWORK", Message: "operation interrupted"}
 	}
-	json.NewEncoder(os.Stderr).Encode(map[string]any{"ok": false, "error": problem})
+	encoder := json.NewEncoder(os.Stderr)
+	encoder.SetEscapeHTML(false)
+	encoder.Encode(map[string]any{"ok": false, "error": problem})
 	return problem.ExitCode()
 }
 func (o *options) print(data any) error {
 	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetEscapeHTML(false)
 	if !o.json {
 		encoder.SetIndent("", "  ")
 	}

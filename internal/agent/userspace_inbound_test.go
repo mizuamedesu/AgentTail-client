@@ -15,6 +15,7 @@ import (
 	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
 	"github.com/mizuamedesu/AgentTail-client/internal/netdev"
 	"github.com/mizuamedesu/AgentTail-client/internal/poc"
+	"golang.zx2c4.com/wireguard/device"
 )
 
 func userspaceTestAddress(t *testing.T) string {
@@ -29,6 +30,7 @@ func userspaceTestAddress(t *testing.T) string {
 }
 
 func TestUserspaceVPNIncomingHostServices(t *testing.T) {
+	started, phase := time.Now(), "initial"
 	socks := userspaceTestAddress(t)
 	pair := newRecoveryPairWithOptions(t, recoveryOptions{userspace: socks})
 	waitFor(t, 15*time.Second, "userspace receiver", func() bool { return pair.connected("10.203.44.0/24") })
@@ -68,7 +70,10 @@ func TestUserspaceVPNIncomingHostServices(t *testing.T) {
 	}()
 	connect := func() (net.Conn, net.Conn) {
 		t.Helper()
-		client, err := dial(port, 5*time.Second)
+		t.Logf("%s TCP connection at %s", phase, time.Since(started))
+		// A WireGuard retry takes five seconds plus jitter. Leave room for a
+		// retry and TCP retransmission after restoring authorization/transport.
+		client, err := dial(port, 3*device.RekeyTimeout)
 		if err != nil {
 			t.Fatal("VPN TCP did not reach a host service:", err)
 		}
@@ -226,6 +231,7 @@ func TestUserspaceVPNIncomingHostServices(t *testing.T) {
 	pair.control.mu.Lock()
 	pair.control.deny = false
 	pair.control.mu.Unlock()
+	phase = "ACL restored"
 	waitFor(t, 15*time.Second, "inbound ACL restoration", func() bool { return pair.connected("10.203.44.0/24") })
 	_, host = connect()
 	if err := pair.keys[0].SetDesired(false); err != nil {
@@ -235,6 +241,7 @@ func TestUserspaceVPNIncomingHostServices(t *testing.T) {
 	if err := pair.keys[0].SetDesired(true); err != nil {
 		t.Fatal(err)
 	}
+	phase = "VPN restarted"
 	waitFor(t, 15*time.Second, "inbound restart", func() bool { return pair.connected("10.203.44.0/24") })
 	_, host = connect()
 	pair.control.mu.Lock()
@@ -248,6 +255,7 @@ func TestUserspaceVPNIncomingHostServices(t *testing.T) {
 	pair.control.mu.Lock()
 	pair.control.fail = false
 	pair.control.mu.Unlock()
+	phase = "lease recovered"
 	waitFor(t, 15*time.Second, "inbound lease recovery", func() bool { return pair.connected("10.203.44.0/24") })
 	_, host = connect()
 	pair.control.mu.Lock()

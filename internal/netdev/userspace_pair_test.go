@@ -19,13 +19,17 @@ import (
 
 type userspaceDatagram struct {
 	*net.UDPConn
-	target      *net.UDPAddr
-	initiations *atomic.Int32
+	target         *net.UDPAddr
+	initiations    *atomic.Int32
+	dropInitiation *atomic.Bool
 }
 
 func (d userspaceDatagram) Write(p []byte) (int, error) {
 	if len(p) >= 4 && binary.LittleEndian.Uint32(p[:4]) == device.MessageInitiationType {
 		d.initiations.Add(1)
+		if d.dropInitiation != nil && d.dropInitiation.Swap(false) {
+			return len(p), nil
+		}
 	}
 	return d.WriteToUDP(p, d.target)
 }
@@ -55,6 +59,7 @@ func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
 	const senderID = "00000000-0000-4000-8000-000000000001"
 	const receiverID = "00000000-0000-4000-8000-000000000002"
 	var initiations [2]atomic.Int32
+	var dropInitiation atomic.Bool
 	if err := sender.SetPeer(receiverID, second.Public, "10.203.99.2"); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +78,7 @@ func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { remote.Close() })
-		senderLink := userspaceDatagram{local, remote.LocalAddr().(*net.UDPAddr), &initiations[0]}
+		senderLink := userspaceDatagram{local, remote.LocalAddr().(*net.UDPAddr), &initiations[0], &dropInitiation}
 		var errConnect error
 		if legacy {
 			// Simulate an older native peer retaining its send keypair when the
@@ -85,7 +90,7 @@ func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
 		if errConnect != nil {
 			t.Fatal(errConnect)
 		}
-		if err := receiver.ConnectPeer(senderID, userspaceDatagram{remote, local.LocalAddr().(*net.UDPAddr), &initiations[1]}); err != nil {
+		if err := receiver.ConnectPeer(senderID, userspaceDatagram{remote, local.LocalAddr().(*net.UDPAddr), &initiations[1], nil}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -109,7 +114,7 @@ func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
 	}()
 	check := func() {
 		t.Helper()
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*device.RekeyTimeout)
 		defer cancel()
 		address := netip.AddrPortFrom(netip.MustParseAddr("10.203.99.2"), uint16(host.Addr().(*net.TCPAddr).Port))
 		client, err := sender.stack.DialContextTCPAddrPort(ctx, address)
@@ -150,9 +155,10 @@ func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
 	receiver.Close()
 	receiver = create(second.Private, "10.203.99.2")
 	previous := initiations[0].Load()
+	dropInitiation.Store(true)
 	connect(receiver, false)
 	check()
-	if initiations[0].Load() <= previous {
-		t.Fatal("a new ICE link reused stale send keys instead of initiating a fresh application handshake")
+	if initiations[0].Load()-previous < 2 || dropInitiation.Load() {
+		t.Fatal("new transport did not rekey and recover from one lost handshake initiation")
 	}
 }

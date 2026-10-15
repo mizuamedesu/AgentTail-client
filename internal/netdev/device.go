@@ -6,6 +6,7 @@ package netdev
 
 import (
 	"context"
+	"crypto/ecdh"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -47,6 +48,7 @@ type peer struct {
 type Device struct {
 	mu         sync.Mutex
 	name       string
+	public     string
 	wg         *device.Device
 	bind       *transport.Bind
 	routes     routeManager
@@ -89,7 +91,8 @@ func New(keyID string, private []byte, address string) (Interface, error) {
 // NewWithTUN is also used by integration tests with a real userspace IP stack.
 // Passing nil routes avoids touching host routing in those tests.
 func NewWithTUN(t tun.Device, routes routeManager, private []byte) (Interface, error) {
-	if len(private) != 32 {
+	privateKey, err := ecdh.X25519().NewPrivateKey(private)
+	if err != nil {
 		t.Close()
 		if routes != nil {
 			routes.Close()
@@ -107,7 +110,7 @@ func NewWithTUN(t tun.Device, routes routeManager, private []byte) (Interface, e
 	b := transport.NewBind()
 	// The underlying library must not log its IPC configuration or secrets.
 	wg := device.NewDevice(t, b, &device.Logger{Verbosef: func(string, ...any) {}, Errorf: func(string, ...any) {}})
-	d := &Device{name: name, wg: wg, bind: b, routes: routes, peers: map[string]peer{}}
+	d := &Device{name: name, public: hex.EncodeToString(privateKey.PublicKey().Bytes()), wg: wg, bind: b, routes: routes, peers: map[string]peer{}}
 	if err = wg.IpcSet("private_key=" + hex.EncodeToString(private) + "\n"); err == nil {
 		err = wg.Up()
 	}
@@ -202,7 +205,7 @@ func (d *Device) ConnectPeer(id string, link transport.Datagram) error {
 	// its long-lived identity is unchanged. A new ICE link must use fresh send
 	// keys. Retain receive keys and IP flows while the normal handshake rekeys.
 	peer.ExpireCurrentKeypairs()
-	if err := d.bind.AddPeer(id, link); err != nil {
+	if err := d.bind.AddPeer(id, &initialHandshake{Datagram: link, preferred: d.public < p.public}); err != nil {
 		return err
 	}
 	// Start only an already queued application request, without an idle probe.

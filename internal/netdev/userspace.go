@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mizuamedesu/AgentTail-client/internal/netstack"
@@ -88,14 +89,53 @@ func newUserspace(_ string, private []byte, address, socks string) (Interface, e
 
 func (d *userspaceDevice) SOCKS5Address() string { return d.listener.Addr().String() }
 
+// Recover a receiver whose peer still encrypts with an old session key. A
+// normal application handshake must finish without a competing eager probe.
+// Only incoming encrypted data without any observed handshake needs a probe.
+type observedDatagram struct {
+	transport.Datagram
+	data, closed        chan struct{}
+	dataOnce, closeOnce sync.Once
+	handshake           atomic.Bool
+}
+
+func (d *observedDatagram) observe(p []byte, incoming bool) {
+	if len(p) < 4 {
+		return
+	}
+	switch binary.LittleEndian.Uint32(p[:4]) {
+	case device.MessageInitiationType, device.MessageResponseType, device.MessageCookieReplyType:
+		d.handshake.Store(true)
+	case device.MessageTransportType:
+		if incoming {
+			d.dataOnce.Do(func() { close(d.data) })
+		}
+	}
+}
+func (d *observedDatagram) stopped() { d.closeOnce.Do(func() { close(d.closed) }) }
+func (d *observedDatagram) Read(p []byte) (int, error) {
+	n, err := d.Datagram.Read(p)
+	if err == nil {
+		d.observe(p[:n], true)
+	} else {
+		d.stopped()
+	}
+	return n, err
+}
+func (d *observedDatagram) Write(p []byte) (int, error) {
+	d.observe(p, false)
+	return d.Datagram.Write(p)
+}
+func (d *observedDatagram) Close() error {
+	d.stopped()
+	return d.Datagram.Close()
+}
+
 func (d *userspaceDevice) ConnectPeer(id string, link transport.Datagram) error {
-	if err := d.Device.ConnectPeer(id, link); err != nil {
+	observed := &observedDatagram{Datagram: link, data: make(chan struct{}), closed: make(chan struct{})}
+	if err := d.Device.ConnectPeer(id, observed); err != nil {
 		return err
 	}
-	// A recreated receiver must refresh a remote retained WireGuard keypair.
-	// Give normal application traffic a head start: two immediate initiations
-	// can replace one another's handshake state and force a retry. Opposite IP
-	// ordering also staggers idle userspace peers without periodic keepalives.
 	d.Device.mu.Lock()
 	p, exists := d.Device.peers[id]
 	d.Device.mu.Unlock()
@@ -111,6 +151,16 @@ func (d *userspaceDevice) ConnectPeer(id string, link transport.Datagram) error 
 	d.mu.Unlock()
 	go func() {
 		defer d.work.Done()
+		select {
+		case <-d.ctx.Done():
+			return
+		case <-observed.closed:
+			return
+		case <-observed.data:
+		}
+		if observed.handshake.Load() {
+			return
+		}
 		delay := time.Second
 		if !d.address.Less(p.address) {
 			delay *= 2
@@ -120,11 +170,18 @@ func (d *userspaceDevice) ConnectPeer(id string, link transport.Datagram) error 
 		select {
 		case <-d.ctx.Done():
 			return
+		case <-observed.closed:
+			return
 		case <-timer.C:
 		}
 		d.Device.mu.Lock()
 		defer d.Device.mu.Unlock()
-		if current, ok := d.Device.peers[id]; !ok || current != p || d.Device.closed || d.ctx.Err() != nil {
+		select {
+		case <-observed.closed:
+			return
+		default:
+		}
+		if current, ok := d.Device.peers[id]; !ok || current != p || d.Device.closed || d.ctx.Err() != nil || observed.handshake.Load() {
 			return
 		}
 		var public device.NoisePublicKey

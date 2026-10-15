@@ -51,6 +51,9 @@ jobs:
         with:
           go-version: '1.27.2'
           cache: true
+      - name: Repeat userspace receiver recovery on Apple Silicon
+        if: matrix.os == 'darwin' && matrix.arch == 'arm64'
+        run: go test -race -count=5 -run '^TestUserspaceVPNIncomingHostServices$' -v ./internal/agent
       - name: Verify native code
         run: go test -race -p 1 ./...
       - name: Verify release signing and public-key pinning

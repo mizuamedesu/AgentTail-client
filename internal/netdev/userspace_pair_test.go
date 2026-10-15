@@ -5,21 +5,30 @@ package netdev
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"io"
 	"net"
 	"net/netip"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
+	"golang.zx2c4.com/wireguard/device"
 )
 
 type userspaceDatagram struct {
 	*net.UDPConn
-	target *net.UDPAddr
+	target      *net.UDPAddr
+	initiations *atomic.Int32
 }
 
-func (d userspaceDatagram) Write(p []byte) (int, error) { return d.WriteToUDP(p, d.target) }
+func (d userspaceDatagram) Write(p []byte) (int, error) {
+	if len(p) >= 4 && binary.LittleEndian.Uint32(p[:4]) == device.MessageInitiationType {
+		d.initiations.Add(1)
+	}
+	return d.WriteToUDP(p, d.target)
+}
 
 func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
 	first, err := cryptobox.GenerateWireGuard()
@@ -45,6 +54,7 @@ func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
 	receiver := create(second.Private, "10.203.99.2")
 	const senderID = "00000000-0000-4000-8000-000000000001"
 	const receiverID = "00000000-0000-4000-8000-000000000002"
+	var initiations [2]atomic.Int32
 	if err := sender.SetPeer(receiverID, second.Public, "10.203.99.2"); err != nil {
 		t.Fatal(err)
 	}
@@ -63,10 +73,10 @@ func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { remote.Close() })
-		if err := sender.ConnectPeer(receiverID, userspaceDatagram{local, remote.LocalAddr().(*net.UDPAddr)}); err != nil {
+		if err := sender.ConnectPeer(receiverID, userspaceDatagram{local, remote.LocalAddr().(*net.UDPAddr), &initiations[0]}); err != nil {
 			t.Fatal(err)
 		}
-		if err := receiver.ConnectPeer(senderID, userspaceDatagram{remote, local.LocalAddr().(*net.UDPAddr)}); err != nil {
+		if err := receiver.ConnectPeer(senderID, userspaceDatagram{remote, local.LocalAddr().(*net.UDPAddr), &initiations[1]}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -109,6 +119,13 @@ func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
 		}
 	}
 	connect(receiver)
+	// Cold, idle peers must let application traffic initiate the handshake.
+	// Sending a recovery probe merely because ICE is attached can compete with
+	// an application handshake on a slow machine or during ACL restoration.
+	time.Sleep(2500 * time.Millisecond)
+	if initiations[0].Load() != 0 || initiations[1].Load() != 0 {
+		t.Fatal("idle peers initiated competing WireGuard recovery handshakes")
+	}
 	check()
 	// Retain the sender's WireGuard identity and existing peer keypair while
 	// replacing only the receiver, as happens after its authorization expires.

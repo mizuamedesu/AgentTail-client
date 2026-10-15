@@ -183,16 +183,30 @@ func (d *Device) RemovePeer(id string) error {
 func (d *Device) ConnectPeer(id string, link transport.Datagram) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if _, ok := d.peers[id]; !ok || d.closed {
+	p, ok := d.peers[id]
+	if !ok || d.closed {
 		link.Close()
 		return errors.New("peer has no active authorization")
 	}
+	var public device.NoisePublicKey
+	if _, err := hex.Decode(public[:], []byte(p.public)); err != nil {
+		link.Close()
+		return errors.New("invalid WireGuard peer identity")
+	}
+	peer := d.wg.LookupPeer(public)
+	if peer == nil {
+		link.Close()
+		return errors.New("WireGuard peer is unavailable")
+	}
+	// The remote receiver may have recreated its WireGuard state even though
+	// its long-lived identity is unchanged. A new ICE link must use fresh send
+	// keys. Retain receive keys and IP flows while the normal handshake rekeys.
+	peer.ExpireCurrentKeypairs()
 	if err := d.bind.AddPeer(id, link); err != nil {
 		return err
 	}
-	// ICE keeps the underlay allocation alive. Start WireGuard handshakes on
-	// application traffic; simultaneous eager keepalives on both ends can race
-	// handshake initiations and unnecessarily wait for the retry timer.
+	// Start only an already queued application request, without an idle probe.
+	peer.SendStagedPackets()
 	return nil
 }
 func (d *Device) DisconnectPeer(id string) error { return d.bind.RemovePeer(id) }

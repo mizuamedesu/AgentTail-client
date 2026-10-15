@@ -58,7 +58,7 @@ func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
 	if err := sender.SetPeer(receiverID, second.Public, "10.203.99.2"); err != nil {
 		t.Fatal(err)
 	}
-	connect := func(receiver *userspaceDevice) {
+	connect := func(receiver *userspaceDevice, legacy bool) {
 		t.Helper()
 		if err := receiver.SetPeer(senderID, first.Public, "10.203.99.1"); err != nil {
 			t.Fatal(err)
@@ -73,8 +73,17 @@ func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { remote.Close() })
-		if err := sender.ConnectPeer(receiverID, userspaceDatagram{local, remote.LocalAddr().(*net.UDPAddr), &initiations[0]}); err != nil {
-			t.Fatal(err)
+		senderLink := userspaceDatagram{local, remote.LocalAddr().(*net.UDPAddr), &initiations[0]}
+		var errConnect error
+		if legacy {
+			// Simulate an older native peer retaining its send keypair when the
+			// receiver recreates its stack. It has no on-demand recovery wrapper.
+			errConnect = sender.bind.AddPeer(receiverID, senderLink)
+		} else {
+			errConnect = sender.ConnectPeer(receiverID, senderLink)
+		}
+		if errConnect != nil {
+			t.Fatal(errConnect)
 		}
 		if err := receiver.ConnectPeer(senderID, userspaceDatagram{remote, local.LocalAddr().(*net.UDPAddr), &initiations[1]}); err != nil {
 			t.Fatal(err)
@@ -118,7 +127,7 @@ func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
 			t.Fatal("encrypted userspace receiver failed", string(got), err)
 		}
 	}
-	connect(receiver)
+	connect(receiver, false)
 	// Cold, idle peers must let application traffic initiate the handshake.
 	// Sending a recovery probe merely because ICE is attached can compete with
 	// an application handshake on a slow machine or during ACL restoration.
@@ -132,6 +141,18 @@ func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
 	sender.DisconnectPeer(receiverID)
 	receiver.Close()
 	receiver = create(second.Private, "10.203.99.2")
-	connect(receiver)
+	connect(receiver, true)
 	check()
+	if initiations[1].Load() == 0 {
+		t.Fatal("a legacy retained sender did not trigger receiver recovery")
+	}
+	sender.DisconnectPeer(receiverID)
+	receiver.Close()
+	receiver = create(second.Private, "10.203.99.2")
+	previous := initiations[0].Load()
+	connect(receiver, false)
+	check()
+	if initiations[0].Load() <= previous {
+		t.Fatal("a new ICE link reused stale send keys instead of initiating a fresh application handshake")
+	}
 }

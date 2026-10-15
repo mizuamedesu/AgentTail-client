@@ -63,6 +63,10 @@ class BootstrapTests(unittest.TestCase):
             env = dict(os.environ, PATH=str(binaries), BOOT_OS=system, BOOT_CPU=cpu, BOOT_FILES=str(base), BOOT_EXEC=str(base/'executed'), BOOT_FETCH=str(base/'fetched'))
             script = (ROOT/'install/install.sh.in').read_text()
             script = script.replace("installed_cli='/usr/local/lib/agenttail/agenttail'", "installed_cli='"+str(artifact)+"'")
+            if not ip:
+                # BusyBox ash can find its ip applet even with an isolated
+                # PATH. Simulate a genuinely missing command in both builds.
+                script = 'command() { if [ "$1" = -v ] && [ "$2" = ip ]; then return 1; fi; type "$2" >/dev/null 2>&1; }\n' + script
             # Standalone BusyBox ash resolves its uname applet before PATH.
             # A shell function supplies the simulated kernel CPU in both shells.
             script = 'uname() { case "$1" in -s) echo "$BOOT_OS";; -m) echo "$BOOT_CPU";; esac; }\n' + script

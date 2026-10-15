@@ -42,15 +42,41 @@ report={'version':version,'os':system,'arch':arch,'empty_client_state':True,'liv
 application=Path('/Applications/AgentTail.app')
 def verify_mac_application():
     assert application.is_dir() and not application.is_symlink(),'macOS needs a real application bundle in /Applications'
-    subprocess.run(['/usr/bin/codesign','--verify','--deep','--strict',str(application)],check=True)
+    subprocess.run(['/usr/bin/codesign','--verify','--deep','--strict',str(application)],check=True,timeout=30)
     user=os.environ.get('SUDO_USER')
     assert user and user!='root','Verify application discovery as the installing user'
-    uid=subprocess.check_output(['/usr/bin/id','-u',user],text=True).strip()
-    result=subprocess.check_output(['/bin/launchctl','asuser',uid,'/usr/bin/sudo','-n','-H','-u',user,'--',
-        '/usr/bin/osascript','-e','POSIX path of (path to application id "io.agenttail.desktop")'],text=True).strip()
-    assert Path(result)==application,('Application is not discoverable for the installing user',result)
+    uid=subprocess.check_output(['/usr/bin/id','-u',user],text=True,timeout=10).strip()
+    # AppleScript's "path to application" sends Apple Events and can launch
+    # the GUI. Query Launch Services directly without opening any application.
+    with tempfile.TemporaryDirectory(prefix='agenttail-application-query-') as directory:
+        query_root=Path(directory);query_root.chmod(0o755)
+        source=query_root/'query.c';query=query_root/'query'
+        source.write_text('''#include <CoreServices/CoreServices.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <stdio.h>
+int main(void) {
+    CFArrayRef apps = LSCopyApplicationURLsForBundleIdentifier(CFSTR("io.agenttail.desktop"), NULL);
+    if (!apps) return 0;
+    for (CFIndex i = 0; i < CFArrayGetCount(apps); i++) {
+        UInt8 path[PATH_MAX];
+        CFURLRef url = (CFURLRef)CFArrayGetValueAtIndex(apps, i);
+        if (CFURLGetFileSystemRepresentation(url, true, path, sizeof(path))) puts((char *)path);
+    }
+    CFRelease(apps);
+    return 0;
+}
+''')
+        subprocess.run(['/usr/bin/cc',str(source),'-framework','CoreServices','-o',str(query)],check=True,timeout=60)
+        query.chmod(0o755)
+        deadline=time.monotonic()+15
+        while True:
+            result=subprocess.check_output(['/bin/launchctl','asuser',uid,'/usr/bin/sudo','-n','-H','-u',user,'--',str(query)],text=True,timeout=20)
+            if application in [Path(path) for path in result.splitlines()]:break
+            assert time.monotonic()<deadline,('Application is not discoverable for the installing user',result)
+            time.sleep(0.2)
     published=application/'Contents/MacOS/agenttail-desktop'
-    actual=json.loads(subprocess.check_output(['/usr/bin/sudo','-n','-u','nobody','--',str(published),'--version','--json'],text=True))
+    actual=json.loads(subprocess.check_output(['/usr/bin/sudo','-n','-u','nobody','--',str(published),'--version','--json'],text=True,timeout=20))
     assert actual['data']['version']==version
     report.update({'application_bundle_in_applications':True,'application_bundle_is_symlink':False,
         'application_signature_valid':True,'application_discoverable_by_bundle_identifier':True,

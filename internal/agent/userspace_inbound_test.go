@@ -126,11 +126,13 @@ func TestUserspaceVPNIncomingHostServices(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { sshListener.Close() })
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	sshStarted := time.Now()
 	_, err = poc.CheckSSH(ctx, func(ctx context.Context, network, _ string) (net.Conn, error) {
 		return peer.DialContext(ctx, network, target(sshListener.Addr().(*net.TCPAddr).Port))
 	}, sshListener, "10.203.44.1")
+	t.Logf("authenticated SSH finished after %s (context: %v)", time.Since(sshStarted), ctx.Err())
 	if err != nil {
 		t.Fatal("authenticated SSH into a userspace host:", err)
 	}

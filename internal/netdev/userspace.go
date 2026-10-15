@@ -92,21 +92,48 @@ func (d *userspaceDevice) ConnectPeer(id string, link transport.Datagram) error 
 	if err := d.Device.ConnectPeer(id, link); err != nil {
 		return err
 	}
-	// A lease outage can recreate this userspace stack while the remote OS
-	// peer still has an older WireGuard keypair. Incoming-only applications do
-	// not generate a packet here to initiate a fresh handshake. A single
-	// encrypted keepalive makes the new receiver usable without an outbound
-	// SOCKS request; ICE still owns the ongoing underlay keepalives.
+	// A recreated receiver must refresh a remote retained WireGuard keypair.
+	// Give normal application traffic a head start: two immediate initiations
+	// can replace one another's handshake state and force a retry. Opposite IP
+	// ordering also staggers idle userspace peers without periodic keepalives.
 	d.Device.mu.Lock()
-	defer d.Device.mu.Unlock()
-	if p, ok := d.Device.peers[id]; ok && !d.Device.closed {
+	p, exists := d.Device.peers[id]
+	d.Device.mu.Unlock()
+	if !exists {
+		return nil
+	}
+	d.mu.Lock()
+	if d.closed {
+		d.mu.Unlock()
+		return nil
+	}
+	d.work.Add(1)
+	d.mu.Unlock()
+	go func() {
+		defer d.work.Done()
+		delay := time.Second
+		if !d.address.Less(p.address) {
+			delay *= 2
+		}
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-d.ctx.Done():
+			return
+		case <-timer.C:
+		}
+		d.Device.mu.Lock()
+		defer d.Device.mu.Unlock()
+		if current, ok := d.Device.peers[id]; !ok || current != p || d.Device.closed || d.ctx.Err() != nil {
+			return
+		}
 		var public device.NoisePublicKey
 		if _, err := hex.Decode(public[:], []byte(p.public)); err == nil {
 			if peer := d.Device.wg.LookupPeer(public); peer != nil {
 				peer.SendKeepalive()
 			}
 		}
-	}
+	}()
 	return nil
 }
 

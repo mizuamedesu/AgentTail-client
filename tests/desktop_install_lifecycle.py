@@ -39,6 +39,22 @@ assert proof['version']==version and proof['native_version_executed']
 helper=None
 installed=False
 report={'version':version,'os':system,'arch':arch,'empty_client_state':True,'live_account_or_device_registration':False}
+application=Path('/Applications/AgentTail.app')
+def verify_mac_application():
+    assert application.is_dir() and not application.is_symlink(),'macOS needs a real application bundle in /Applications'
+    subprocess.run(['/usr/bin/codesign','--verify','--deep','--strict',str(application)],check=True)
+    user=os.environ.get('SUDO_USER')
+    assert user and user!='root','Verify application discovery as the installing user'
+    uid=subprocess.check_output(['/usr/bin/id','-u',user],text=True).strip()
+    result=subprocess.check_output(['/bin/launchctl','asuser',uid,'/usr/bin/sudo','-n','-H','-u',user,'--',
+        '/usr/bin/osascript','-e','POSIX path of (path to application id "io.agenttail.desktop")'],text=True).strip()
+    assert Path(result)==application,('Application is not discoverable for the installing user',result)
+    published=application/'Contents/MacOS/agenttail-desktop'
+    actual=json.loads(subprocess.check_output(['/usr/bin/sudo','-n','-u','nobody','--',str(published),'--version','--json'],text=True))
+    assert actual['data']['version']==version
+    report.update({'application_bundle_in_applications':True,'application_bundle_is_symlink':False,
+        'application_signature_valid':True,'application_discoverable_by_bundle_identifier':True,
+        'published_application_runs_as_ordinary_user':True})
 with tempfile.TemporaryDirectory(prefix='agenttail-desktop-acceptance-') as temporary:
     temp=Path(temporary)
     state=temp/'state';state.mkdir(mode=0o700)
@@ -74,7 +90,17 @@ with tempfile.TemporaryDirectory(prefix='agenttail-desktop-acceptance-') as temp
             ordinary=json.loads(subprocess.check_output([*prefix,str(executable),'--version','--json'],text=True))
             assert ordinary['data']['version']==version
             report['ordinary_user_can_execute']=True
+        if system=='darwin':
+            verify_mac_application()
+            # Reproduce dev.22 exactly: replace our disposable copy with its
+            # old link, then require reinstall to migrate and register it.
+            shutil.rmtree(application)
+            application.symlink_to(executable.parents[2])
+            run(*install_args)
+            verify_mac_application()
+            report['legacy_application_link_migrated']=True
         run(*install_args)
+        if system=='darwin':verify_mac_application()
         assert json.loads((root/'desktop/installation.json').read_text())==gui
         report.update({'gui_install':True,'private_bootstrap_umask':True,'same_release_reinstall':True})
         with socket.socket() as reserved:
@@ -111,6 +137,9 @@ with tempfile.TemporaryDirectory(prefix='agenttail-desktop-acceptance-') as temp
             removed=run('uninstall','--yes','--offline','--purge')['data']
             assert removed['uninstalled'] and not (root/'installation.json').exists()
             assert not (root/'desktop/installation.json').exists()
+            if system=='darwin':
+                assert not application.exists() and not application.is_symlink()
+                report['application_bundle_removed']=True
             report['gui_and_cli_uninstalled']=True
 a.report.parent.mkdir(parents=True,exist_ok=True)
 a.report.write_text(json.dumps(report,indent=2)+'\n')

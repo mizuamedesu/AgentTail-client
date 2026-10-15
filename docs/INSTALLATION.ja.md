@@ -117,3 +117,10 @@ curl -fsS https://agenttail.mizuame.app/install.sh.sha256 -o install.sh.sha256
 sha256sum -c install.sh.sha256
 sh install.sh --vpn <VPN-ID>
 ```
+### macOS のアプリ一覧
+
+dev.23 以降は `/Applications/AgentTail.app` にアプリ本体を配置し、
+インストールを実行したユーザーの Launch Services に登録します。
+dev.22 のリンクだけの配置は、インストーラーの再実行時に自動修復します。
+既存の端末承認は保持します。直接開く場合は `open /Applications/AgentTail.app` を使えます。
+登録処理は [Apple の Launch Services の説明](https://developer.apple.com/library/archive/documentation/Carbon/Conceptual/LaunchServicesConcepts/LSCConcepts/LSCConcepts.html#//apple_ref/doc/uid/TP30000999-CH202-CHDDGJFD) に従います。

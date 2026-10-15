@@ -73,6 +73,10 @@ func (c *Client) Toggle(ctx context.Context, id, action string) error {
 	return c.request(ctx, "POST", "/v1/vpn", Action{ID: id, Action: action}, nil)
 }
 
+func (c *Client) Remove(ctx context.Context, id string) error {
+	return c.Toggle(ctx, id, "leave")
+}
+
 func (c *Client) StartService(ctx context.Context) error {
 	return c.request(ctx, "POST", "/v1/service/start", struct{}{}, nil)
 }

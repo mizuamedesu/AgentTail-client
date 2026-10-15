@@ -6,7 +6,7 @@ on:
     inputs:
       version:
         description: Native artifact version
-        default: 0.1.0-dev.24
+        default: 0.1.0-dev.25
         required: true
 permissions:
   contents: read
@@ -14,7 +14,7 @@ concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
 env:
-  RELEASE_VERSION: ${{ inputs.version || '0.1.0-dev.24' }}
+  RELEASE_VERSION: ${{ inputs.version || '0.1.0-dev.25' }}
 jobs:
   installers:
     runs-on: ubuntu-24.04

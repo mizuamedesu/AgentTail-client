@@ -26,26 +26,28 @@ import (
 type Controller interface {
 	Status(context.Context) (desktop.Snapshot, error)
 	Toggle(context.Context, string, string) error
+	Remove(context.Context, string) error
 	StartService(context.Context) error
 }
 
 type Window struct {
-	window                fyne.Window
-	client                Controller
-	ctx                   context.Context
-	cancel                context.CancelFunc
-	mu                    sync.Mutex // serializes refreshes, not independent VPN operations
-	items                 []desktop.VPN
-	running               bool
-	selected              string
-	busy                  map[string]bool
-	list                  *widget.List
-	name, problem, footer *widget.Label
-	detail                *widget.Form
-	fields                map[string]*widget.Label
-	state                 *canvas.Text
-	button, service       *widget.Button
-	panel, empty          *fyne.Container
+	window                  fyne.Window
+	client                  Controller
+	ctx                     context.Context
+	cancel                  context.CancelFunc
+	mu                      sync.Mutex // serializes refreshes, not independent VPN operations
+	items                   []desktop.VPN
+	running                 bool
+	selected                string
+	busy                    map[string]bool
+	list                    *widget.List
+	name, problem, footer   *widget.Label
+	detail                  *widget.Form
+	fields                  map[string]*widget.Label
+	state                   *canvas.Text
+	button, remove, service *widget.Button
+	panel, empty            *fyne.Container
+	confirmation            *dialog.ConfirmDialog
 }
 
 func New(application fyne.App, client Controller) *Window {
@@ -73,6 +75,9 @@ func New(application fyne.App, client Controller) *Window {
 	w.footer.Wrapping = fyne.TextWrapWord
 	w.button = widget.NewButton("Connect", w.toggle)
 	w.button.Disable()
+	w.remove = widget.NewButtonWithIcon("Remove VPN", theme.DeleteIcon(), w.removeVPN)
+	w.remove.Importance = widget.DangerImportance
+	w.remove.Disable()
 	w.service = widget.NewButton("Start service", func() { w.work(func(ctx context.Context) error { return w.client.StartService(ctx) }) })
 	w.service.Hide()
 	w.list = widget.NewList(func() int { return len(w.items) }, func() fyne.CanvasObject {
@@ -90,7 +95,7 @@ func New(application fyne.App, client Controller) *Window {
 		}
 	}
 	w.panel = container.NewBorder(container.NewVBox(w.name, w.state, widget.NewSeparator()), nil, nil, nil,
-		container.NewVBox(w.detail, w.problem, container.NewHBox(w.button, layout.NewSpacer())))
+		container.NewVBox(w.detail, w.problem, container.NewHBox(w.button, layout.NewSpacer(), w.remove)))
 	website := widget.NewButtonWithIcon("Manage VPNs", theme.ComputerIcon(), func() { target, _ := url.Parse("https://agenttail.mizuame.app"); _ = application.OpenURL(target) })
 	w.empty = container.NewCenter(container.NewVBox(widget.NewLabelWithStyle("No VPNs on this device", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}), widget.NewLabel("Add this device from your AgentTail VPN page."), website))
 	w.empty.Hide()
@@ -172,6 +177,11 @@ func (w *Window) updateDetail() {
 			w.button.Enable()
 		}
 		w.button.SetText(action)
+		if w.busy[item.ID] {
+			w.remove.Disable()
+		} else {
+			w.remove.Enable()
+		}
 		return
 	}
 	w.name.SetText("Select a VPN")
@@ -181,6 +191,7 @@ func (w *Window) updateDetail() {
 	w.detail.Refresh()
 	w.problem.SetText("")
 	w.button.Disable()
+	w.remove.Disable()
 }
 
 func bytes(n uint64) string {
@@ -244,6 +255,7 @@ func (w *Window) Refresh() {
 			if err != nil {
 				w.footer.SetText(err.Error())
 				w.button.Disable()
+				w.remove.Disable()
 				return
 			}
 			w.apply(snapshot)
@@ -275,24 +287,64 @@ func (w *Window) toggle() {
 		if v.Desired == "up" {
 			action = "down"
 		}
-		w.busy[id] = true
-		w.updateDetail()
-		go func() {
-			err := w.client.Toggle(w.ctx, id, action)
-			if w.ctx.Err() != nil {
-				return
-			}
-			fyne.Do(func() {
-				delete(w.busy, id)
-				w.updateDetail()
-				if err != nil {
-					dialog.ShowError(err, w.window)
-				}
-				w.Refresh()
-			})
-		}()
+		w.perform(id, func(ctx context.Context) error { return w.client.Toggle(ctx, id, action) })
 		return
 	}
+}
+
+func (w *Window) removeVPN() {
+	if w.confirmation != nil {
+		return
+	}
+	for _, v := range w.items {
+		if v.ID != w.selected || w.busy[v.ID] {
+			continue
+		}
+		id := v.ID
+		confirmation := dialog.NewConfirm("Remove VPN", fmt.Sprintf("Remove %q from this computer?\n\nThis disconnects this computer and removes its VPN access. Other devices stay in the VPN. Joining again requires approval.", v.Name), func(confirmed bool) {
+			w.confirmation = nil
+			if confirmed {
+				w.perform(id, func(ctx context.Context) error { return w.client.Remove(ctx, id) })
+			}
+		}, w.window)
+		confirmation.SetConfirmText("Remove")
+		confirmation.SetConfirmImportance(widget.DangerImportance)
+		w.confirmation = confirmation
+		confirmation.Show()
+		return
+	}
+}
+
+func (w *Window) perform(id string, action func(context.Context) error) {
+	if w.busy[id] {
+		return
+	}
+	found := false
+	for _, v := range w.items {
+		if v.ID == id {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return
+	}
+	w.busy[id] = true
+	w.updateDetail()
+	go func() {
+		err := action(w.ctx)
+		if w.ctx.Err() != nil {
+			return
+		}
+		fyne.Do(func() {
+			delete(w.busy, id)
+			w.updateDetail()
+			if err != nil {
+				dialog.ShowError(err, w.window)
+			}
+			w.Refresh()
+		})
+	}()
 }
 
 func (w *Window) ShowAndRun() {

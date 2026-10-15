@@ -31,7 +31,8 @@ func (c *controls) Toggle(ctx context.Context, id, action string) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
-func (*controls) StartService(context.Context) error { return nil }
+func (*controls) StartService(context.Context) error            { return nil }
+func (c *controls) Remove(ctx context.Context, id string) error { return c.Toggle(ctx, id, "leave") }
 
 func TestWindowSelectsAndControlsOnlyTheSelectedVPN(t *testing.T) {
 	application := test.NewApp()
@@ -91,4 +92,59 @@ func TestWindowSelectsAndControlsOnlyTheSelectedVPN(t *testing.T) {
 		t.Fatal("an in-flight action blocked a different VPN")
 	}
 
+}
+
+func TestRemovalRequiresConfirmationAndKeepsTheConfirmedTarget(t *testing.T) {
+	application := test.NewApp()
+	defer application.Quit()
+	control := &controls{}
+	w := New(application, control)
+	defer w.cancel()
+	state := desktop.Snapshot{Running: false, VPNs: []desktop.VPN{
+		{ID: "00000000-0000-4000-8000-000000000001", Name: "Office", Desired: "up"},
+		{ID: "00000000-0000-4000-8000-000000000002", Name: "Development", Desired: "down"},
+	}}
+	w.apply(state)
+	w.list.Select(1)
+	if w.remove.Disabled() {
+		t.Fatal("a stopped service must not prevent VPN removal")
+	}
+	test.Tap(w.remove)
+	if w.confirmation == nil {
+		t.Fatal("removal did not ask for confirmation")
+	}
+	w.confirmation.Dismiss()
+	control.mu.Lock()
+	called := len(control.calls)
+	control.mu.Unlock()
+	if called != 0 {
+		t.Fatal("cancelling removal changed a VPN")
+	}
+	test.Tap(w.remove)
+	// Background refresh/selection must not change which VPN was confirmed.
+	w.list.Select(0)
+	w.confirmation.Confirm()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		control.mu.Lock()
+		calls := append([]desktop.Action{}, control.calls...)
+		control.mu.Unlock()
+		if len(calls) == 1 {
+			if calls[0] != (desktop.Action{ID: state.VPNs[1].ID, Action: "leave"}) {
+				t.Fatalf("wrong removal target: %+v", calls)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("confirmed VPN was not removed")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if w.remove.Disabled() {
+		t.Fatal("removing another VPN blocked this VPN")
+	}
+	w.list.Select(1)
+	if !w.remove.Disabled() {
+		t.Fatal("an in-flight removal can be submitted again")
+	}
 }

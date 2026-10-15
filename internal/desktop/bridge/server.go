@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Package bridge implements the privileged, short-lived desktop helper. It
-// exposes status and per-key up/down only, never credentials or arbitrary CLI.
+// exposes status and per-key up/down/leave only, never credentials or arbitrary CLI.
 package bridge
 
 import (
@@ -75,8 +75,8 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 			fail(400, "invalid VPN action")
 			return
 		}
-		if _, err := uuid.Parse(input.ID); err != nil || input.Action != "up" && input.Action != "down" {
-			fail(403, "only per-VPN connect and disconnect are allowed")
+		if _, err := uuid.Parse(input.ID); err != nil || input.Action != "up" && input.Action != "down" && input.Action != "leave" {
+			fail(403, "only per-VPN connect, disconnect and removal are allowed")
 			return
 		}
 		err = s.Backend.Toggle(r.Context(), input)

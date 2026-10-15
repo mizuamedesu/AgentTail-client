@@ -47,33 +47,37 @@ func (o *options) addDevice(root *cobra.Command) {
 		if err != nil {
 			return err
 		}
-		credential, err := o.state.LoadKey(key)
-		if err != nil {
-			return err
-		}
-		defer clear(credential.Private)
-		if o.config.Server != o.server {
-			return &api.Error{Code: "FORBIDDEN", Message: "key belongs to a different server"}
-		}
-		// Keep the credential when remote revocation cannot be confirmed.
-		if err = o.stopDevice(key); err != nil {
-			return err
-		}
-		client, err := o.client(credential.Token)
-		if err != nil {
-			return err
-		}
-		err = client.Do(o.ctx, "POST", "/api/agent/logout", map[string]any{}, nil, "")
-		var p *api.Error
-		if err != nil && !(errors.As(err, &p) && p.Status == 401 && p.Code == "UNAUTHENTICATED") {
-			return err
-		}
-		if err = o.forgetDevice(key); err != nil {
+		if err = o.leaveDevice(key); err != nil {
 			return err
 		}
 		return o.print(map[string]any{"key_id": key.ID, "revoked": true})
 	}
 	group.AddCommand(logout)
+}
+
+func (o *options) leaveDevice(key localstate.Key) error {
+	credential, err := o.state.LoadKey(key)
+	if err != nil {
+		return err
+	}
+	defer clear(credential.Private)
+	if o.config.Server != o.server {
+		return &api.Error{Code: "FORBIDDEN", Message: "key belongs to a different server"}
+	}
+	// Keep the credential when remote revocation cannot be confirmed.
+	if err = o.stopDevice(key); err != nil {
+		return err
+	}
+	client, err := o.client(credential.Token)
+	if err != nil {
+		return err
+	}
+	err = client.Do(o.ctx, "POST", "/api/agent/logout", map[string]any{}, nil, "")
+	var p *api.Error
+	if err != nil && !(errors.As(err, &p) && p.Status == 401 && p.Code == "UNAUTHENTICATED") {
+		return err
+	}
+	return o.forgetDevice(key)
 }
 
 func (o *options) stopDevice(key localstate.Key) error {

@@ -152,6 +152,7 @@ func TestNativeVPNJoinRecovery(t *testing.T) {
 		})
 	}
 	t.Run("userspace mode and service restart preserve approval", testNativeUserspaceRestart)
+	t.Run("desktop removes only the selected VPN", testNativeDesktopRemoval)
 }
 
 func testNativeUserspaceRestart(t *testing.T) {

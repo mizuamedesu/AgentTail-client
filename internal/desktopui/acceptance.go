@@ -38,6 +38,17 @@ func (c *fixtureControl) Toggle(_ context.Context, id, action string) error {
 	return nil
 }
 func (*fixtureControl) StartService(context.Context) error { return nil }
+func (c *fixtureControl) Remove(_ context.Context, id string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, v := range c.vpns {
+		if v.ID == id {
+			c.vpns = append(c.vpns[:i], c.vpns[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
 
 // RunAcceptanceWindow uses the real native window and event loop with fixture
 // data. It never opens the privileged helper or contacts a control server.
@@ -47,6 +58,20 @@ func RunAcceptanceWindow(application fyne.App, version, path string) {
 		{ID: "00000000-0000-4000-8000-000000000002", Name: "Development", State: "down", Desired: "down", Mode: "native"},
 	}}
 	w := New(application, control)
+	awaitUI := func(check func() bool, message string) {
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			ready := false
+			fyne.DoAndWait(func() { ready = check() })
+			if ready {
+				return
+			}
+			if time.Now().After(deadline) {
+				panic(message)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
 	go func() {
 		time.Sleep(4 * time.Second)
 		fyne.DoAndWait(func() {
@@ -59,14 +84,35 @@ func RunAcceptanceWindow(application fyne.App, version, path string) {
 			}
 			w.button.OnTapped()
 		})
-		time.Sleep(2 * time.Second)
+		awaitUI(func() bool { return w.button.Text == "Disconnect" }, "native VPN state did not refresh")
 		fyne.DoAndWait(func() {
 			control.mu.Lock()
-			defer control.mu.Unlock()
 			if w.selected != control.vpns[1].ID || w.button.Text != "Disconnect" || control.vpns[1].Desired != "up" || control.vpns[0].Desired != "up" {
 				panic("native window changed the wrong VPN or failed to refresh")
 			}
-			proof := map[string]any{"version": version, "native_window_started": true, "selection_scope": true, "other_vpn_preserved": true, "state_refreshed": true, "fixture_only": true}
+			control.mu.Unlock()
+			w.remove.OnTapped()
+			w.confirmation.Dismiss()
+			if len(w.items) != 2 {
+				panic("cancelled removal changed the VPN list")
+			}
+			w.remove.OnTapped()
+			w.confirmation.Confirm()
+		})
+		awaitUI(func() bool { return len(w.items) == 1 }, "native VPN removal did not refresh")
+		fyne.DoAndWait(func() {
+			if len(w.items) != 1 || w.name.Text != "Office" || w.button.Text != "Disconnect" {
+				panic("removal changed another VPN or failed to refresh")
+			}
+			w.remove.OnTapped()
+			w.confirmation.Confirm()
+		})
+		awaitUI(func() bool { return len(w.items) == 0 }, "native final VPN removal did not refresh")
+		fyne.DoAndWait(func() {
+			if len(w.items) != 0 || w.empty.Hidden || !w.panel.Hidden {
+				panic("removing the final VPN did not show the empty state")
+			}
+			proof := map[string]any{"version": version, "native_window_started": true, "selection_scope": true, "other_vpn_preserved": true, "state_refreshed": true, "removal_cancelled": true, "selected_vpn_removed": true, "last_vpn_empty_state": true, "fixture_only": true}
 			data, err := json.MarshalIndent(proof, "", "  ")
 			if err != nil {
 				panic(err)

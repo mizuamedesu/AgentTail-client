@@ -36,6 +36,11 @@ func (f *fixture) Toggle(_ context.Context, a desktop.Action) error {
 	defer f.mu.Unlock()
 	for i, v := range f.snapshot.VPNs {
 		if v.ID == a.ID {
+			if a.Action == "leave" {
+				f.snapshot.VPNs = append(f.snapshot.VPNs[:i], f.snapshot.VPNs[i+1:]...)
+				f.actions = append(f.actions, a)
+				return nil
+			}
 			f.snapshot.VPNs[i].Desired = a.Action
 			f.actions = append(f.actions, a)
 			return nil
@@ -145,5 +150,21 @@ func TestDesktopAuthorizationAndBrowserIsolation(t *testing.T) {
 	defer f.mu.Unlock()
 	if len(f.actions) != 0 {
 		t.Fatal("rejected request reached VPN controls")
+	}
+}
+
+func TestRemovalAffectsOnlyTheSelectedVPN(t *testing.T) {
+	s, _, _ := setup(t)
+	c := desktop.NewClient(s.Session)
+	ctx := context.Background()
+	if err := c.Remove(ctx, "00000000-0000-4000-8000-000000000002"); err != nil {
+		t.Fatal(err)
+	}
+	state, err := c.Status(ctx)
+	if err != nil || len(state.VPNs) != 1 || state.VPNs[0].ID != "00000000-0000-4000-8000-000000000001" || state.VPNs[0].Desired != "up" {
+		t.Fatal("removal changed the other VPN", state, err)
+	}
+	if err := c.Remove(ctx, "00000000-0000-4000-8000-000000000003"); err == nil {
+		t.Fatal("a foreign VPN could be removed")
 	}
 }

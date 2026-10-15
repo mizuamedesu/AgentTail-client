@@ -47,7 +47,7 @@ func (o *options) addDesktop(root *cobra.Command) {
 		if err != nil {
 			return err
 		}
-		server := bridge.Server{Session: session, Backend: &desktopBackend{state: o.state, version: o.version}}
+		server := bridge.Server{Session: session, Backend: &desktopBackend{state: o.state, version: o.version, local: o.local}}
 		return server.Serve(o.ctx)
 	}}
 	command.Flags().StringVar(&sessionFile, "session-file", "", "private desktop session file")
@@ -58,6 +58,7 @@ func (o *options) addDesktop(root *cobra.Command) {
 type desktopBackend struct {
 	state   *localstate.State
 	version string
+	local   bool
 }
 
 func (b *desktopBackend) Status(ctx context.Context) (desktop.Snapshot, error) {
@@ -124,15 +125,19 @@ func (b *desktopBackend) Toggle(ctx context.Context, action desktop.Action) erro
 	if err != nil {
 		return err
 	}
-	allowed := false
+	var selected *localstate.Key
 	for _, key := range config.Keys {
 		if key.ID == action.ID {
-			allowed = true
+			selected = &key
 			break
 		}
 	}
-	if !allowed || action.Action != "up" && action.Action != "down" {
+	if selected == nil || action.Action != "up" && action.Action != "down" && action.Action != "leave" {
 		return errors.New("this VPN is not installed on this machine")
+	}
+	if action.Action == "leave" {
+		o := options{ctx: ctx, state: b.state, config: config, server: config.Server, local: b.local}
+		return o.leaveDevice(*selected)
 	}
 	return agent.LocalRequest(ctx, b.state.Store.Dir, action.ID, action.Action, nil)
 }

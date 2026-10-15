@@ -1,4 +1,4 @@
-# Test IP stack
+# Userspace IP stack
 
 `tun.go` is the MIT-licensed WireGuard Go netstack adapter from
 `golang.zx2c4.com/wireguard@v0.0.0-20260522210424-ecfc5a8d5446`, with local fixes:
@@ -18,8 +18,9 @@ packet processing. Shutdown serializes with callbacks and releases queued views.
 The queue regression test writes a packet before starting the TUN reader.
 
 Keep the rest of the adapter identical to the pinned upstream version. The ICMP
-regression test queues a reply before calling Read. The native `agenttail` binary uses
-OS TUN/IP, not this adapter; this copy is for integration tests and `turn-poc`.
+regression test queues a reply before calling Read. `agenttail vpn up --userspace`
+uses this adapter in production without an OS TUN, route changes or NET_ADMIN.
+The native mode still uses OS TUN/IP. Integration tests and `turn-poc` share this adapter.
 The complete upstream license is in `LICENSE`.
 
 Source: https://git.zx2c4.com/wireguard-go/tree/tun/netstack/tun.go?id=ecfc5a8d5446

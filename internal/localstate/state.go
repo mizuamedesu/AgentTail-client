@@ -9,19 +9,21 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mizuamedesu/AgentTail-client/internal/netdev"
 	"github.com/mizuamedesu/AgentTail-client/internal/secrets"
 )
 
 const Version = 1
 
 type Key struct {
-	VPNID   string `json:"vpn_id,omitempty"`
-	ID      string `json:"key_id"`
-	Name    string `json:"name"`
-	Public  string `json:"public_key"`
-	GrantID string `json:"grant_id"`
-	Expires int64  `json:"expires_at"`
-	AutoUp  bool   `json:"auto_up"`
+	VPNID   string          `json:"vpn_id,omitempty"`
+	ID      string          `json:"key_id"`
+	Name    string          `json:"name"`
+	Public  string          `json:"public_key"`
+	GrantID string          `json:"grant_id"`
+	Expires int64           `json:"expires_at"`
+	AutoUp  bool            `json:"auto_up"`
+	Network netdev.Settings `json:"network,omitempty"`
 }
 type Config struct {
 	Version        int    `json:"version"`

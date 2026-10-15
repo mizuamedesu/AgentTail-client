@@ -23,8 +23,14 @@ func (o *options) addDevice(root *cobra.Command) {
 	login.Flags().StringVar(&vpn, "name", "", "VPN name or ID")
 	login.Flags().StringVar(&machine, "device-name", "", "device name (defaults to hostname)")
 	login.Flags().BoolVar(&connect, "up", true, "connect after approval")
+	readNetwork := o.networkFlags(login, true)
 	required(login, "name")
-	login.RunE = func(*cobra.Command, []string) error { return o.loginDevice(vpn, machine, connect) }
+	login.RunE = func(*cobra.Command, []string) error {
+		if err := readNetwork(); err != nil {
+			return err
+		}
+		return o.loginDevice(vpn, machine, connect)
+	}
 	var group *cobra.Command
 	for _, cmd := range root.Commands() {
 		if cmd.Name() == "vpn" {
@@ -189,6 +195,9 @@ func (o *options) loginDevice(vpn, machine string, connect bool) error {
 		return err
 	}
 	if joined != nil {
+		if err := o.saveNetwork(joined.ID); err != nil {
+			return err
+		}
 		if connect {
 			return o.requestNetwork("up", joined.ID, joined.Name)
 		}
@@ -301,6 +310,9 @@ func (o *options) loginDevice(vpn, machine string, connect bool) error {
 			return err
 		}
 		key := localstate.Key{ID: grant.KeyID, Name: grant.VPNName, VPNID: grant.VPNID, Public: public, GrantID: grant.GrantID, Expires: grant.Expires}
+		if o.network != nil {
+			key.Network = *o.network
+		}
 		err = o.state.Update(func(c *localstate.Config) error {
 			if err := o.saveOrigin(c); err != nil {
 				return err

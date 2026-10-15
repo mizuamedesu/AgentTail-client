@@ -57,7 +57,7 @@ func (k *Key) applyConfiguration(c configuration) error {
 		return nil
 	}
 	if k.network == nil {
-		if prefix, err := netdev.Network(k.cidr); err == nil && prefix != netdev.AddressPool && !k.options.LoopbackOnly {
+		if prefix, err := netdev.Network(k.cidr); err == nil && prefix != netdev.AddressPool && !k.options.LoopbackOnly && k.options.Metadata.Network.Mode != "userspace" {
 			if err := netdev.CheckNetwork(prefix); err != nil {
 				return err
 			}

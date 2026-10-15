@@ -10,11 +10,15 @@ ssh_public=''
 ssh_private=''
 ssh_expected=''
 no_service=''
+userspace=''
+socks5=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --source) source_url=$2; custom_source=1; shift 2 ;;
     --server) server=$2; shift 2 ;;
     --vpn) vpn=$2; shift 2 ;;
+    --userspace) userspace=1; shift ;;
+    --socks5) socks5=$2; userspace=1; shift 2 ;;
     --ssh-public-key) ssh_public=$2; shift 2 ;;
     --ssh-private-key) ssh_private=$2; shift 2 ;;
     --ssh-expected-public-key) ssh_expected=$2; shift 2 ;;
@@ -38,12 +42,14 @@ if [ "$arch" = riscv64 ]; then
 fi
 for dependency in curl openssl awk; do command -v "$dependency" >/dev/null 2>&1 || { printf 'Required command: %s\n' "$dependency" >&2; exit 2; }; done
 if [ "$system" = linux ] && [ -z "$ssh_public$ssh_private" ]; then
-  command -v ip >/dev/null 2>&1 || { printf '%s\n' 'Required command: ip' >&2; exit 2; }
+  if [ -z "$userspace" ]; then
+    command -v ip >/dev/null 2>&1 || { printf '%s\n' 'Required command: ip (or pass --userspace for a TUN-free SOCKS5 VPN)' >&2; exit 2; }
+  fi
   if [ "$arch" = riscv64 ]; then
     if [ -z "$no_service" ]; then
-      [ -x /bin/busybox ] && [ -f /etc/init.d/rcS ] || { printf '%s\n' 'NanoKVM builds require BusyBox init; use --no-service for a foreground agent' >&2; exit 2; }
+      [ -x /bin/busybox ] && [ -f /etc/init.d/rcS ] || { printf '%s\n' 'RISC-V service installation requires BusyBox init; use --no-service for a foreground agent' >&2; exit 2; }
     fi
-    [ "$(id -u)" = 0 ] || { printf '%s\n' 'Run the NanoKVM installer as root' >&2; exit 2; }
+    [ "$(id -u)" = 0 ] || { printf '%s\n' 'Run the RISC-V installer as root' >&2; exit 2; }
     export GOMEMLIMIT="${GOMEMLIMIT:-64MiB}"
   fi
   if [ "$arch" != riscv64 ] && ! command -v systemd-creds >/dev/null 2>&1; then
@@ -89,12 +95,19 @@ printf '%s\n' 'AgentTail installed. Open a new shell to use the agenttail comman
 if [ -n "$vpn" ]; then
   if [ "$system" = darwin ]; then installed_cli='/Library/AgentTail/agenttail'; else installed_cli='/usr/local/lib/agenttail/agenttail'; fi
   printf '%s\n' 'Joining the VPN. If approval is needed, open the link printed below.'
+  set -- --server "$server" vpn join --name "$vpn"
+  [ -z "$userspace" ] || set -- "$@" --userspace
+  [ -z "$socks5" ] || set -- "$@" --socks5 "$socks5"
   if [ -n "$no_service" ]; then
-    "$installed_cli" --server "$server" vpn join --name "$vpn" --up=false
+    "$installed_cli" "$@" --up=false
     printf '%s\n' 'Authorized. Start agenttail agent run, then agenttail vpn up --name <vpn-name>.'
   else
-    "$installed_cli" --server "$server" vpn join --name "$vpn"
+    "$installed_cli" "$@"
   fi
 else
-  printf '%s\n' 'Run agenttail vpn join --name <vpn-name> to connect this computer.'
+  if [ -n "$userspace" ]; then
+    printf 'Run agenttail vpn join --name <vpn-name> --userspace --socks5 %s to connect this computer.\n' "${socks5:-127.0.0.1:1080}"
+  else
+    printf '%s\n' 'Run agenttail vpn join --name <vpn-name> to connect this computer.'
+  fi
 fi

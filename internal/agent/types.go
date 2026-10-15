@@ -71,22 +71,24 @@ type PeerStatus struct {
 	Received uint64 `json:"wireguard_bytes_received"`
 }
 type Status struct {
-	ID         string       `json:"key_id"`
-	Name       string       `json:"name"`
-	Public     string       `json:"public_key"`
-	Instance   string       `json:"instance_id"`
-	State      string       `json:"state"`
-	Desired    string       `json:"desired_state"`
-	Interface  string       `json:"interface,omitempty"`
-	Address    string       `json:"virtual_ip,omitempty"`
-	CIDR       string       `json:"ipv4_cidr,omitempty"`
-	Authorized bool         `json:"lease_valid"`
-	LastSync   int64        `json:"last_sync_at,omitempty"`
-	Problem    string       `json:"error,omitempty"`
-	Peers      []PeerStatus `json:"peers"`
-	Sent       uint64       `json:"wireguard_bytes_sent"`
-	Received   uint64       `json:"wireguard_bytes_received"`
-	Dropped    uint64       `json:"bandwidth_dropped_bytes"`
+	ID          string       `json:"key_id"`
+	Name        string       `json:"name"`
+	Public      string       `json:"public_key"`
+	Instance    string       `json:"instance_id"`
+	State       string       `json:"state"`
+	Desired     string       `json:"desired_state"`
+	Interface   string       `json:"interface,omitempty"`
+	NetworkMode string       `json:"network_mode"`
+	SOCKS5      string       `json:"socks5,omitempty"`
+	Address     string       `json:"virtual_ip,omitempty"`
+	CIDR        string       `json:"ipv4_cidr,omitempty"`
+	Authorized  bool         `json:"lease_valid"`
+	LastSync    int64        `json:"last_sync_at,omitempty"`
+	Problem     string       `json:"error,omitempty"`
+	Peers       []PeerStatus `json:"peers"`
+	Sent        uint64       `json:"wireguard_bytes_sent"`
+	Received    uint64       `json:"wireguard_bytes_received"`
+	Dropped     uint64       `json:"bandwidth_dropped_bytes"`
 }
 
 type Options struct {

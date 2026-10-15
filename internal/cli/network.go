@@ -9,6 +9,8 @@ import (
 
 	"github.com/mizuamedesu/AgentTail-client/internal/agent"
 	"github.com/mizuamedesu/AgentTail-client/internal/api"
+	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
+	"github.com/mizuamedesu/AgentTail-client/internal/netdev"
 	"github.com/mizuamedesu/AgentTail-client/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -19,10 +21,14 @@ func (o *options) addNetwork(root *cobra.Command) {
 		var name string
 		command := &cobra.Command{Use: action, Short: action + " a joined VPN", Args: cobra.NoArgs}
 		command.Flags().StringVar(&name, "name", "", "VPN name or ID")
+		readNetwork := o.networkFlags(command, action == "up")
 		if action != "status" {
 			required(command, "name")
 		}
 		command.RunE = func(*cobra.Command, []string) error {
+			if err := readNetwork(); err != nil {
+				return err
+			}
 			if len(o.config.Keys) > 0 && o.config.Server != o.server {
 				return &api.Error{Code: "FORBIDDEN", Message: "local keys belong to a different server"}
 			}
@@ -51,6 +57,11 @@ func (o *options) addNetwork(root *cobra.Command) {
 }
 
 func (o *options) requestNetwork(action, id, name string) error {
+	if action == "up" {
+		if err := o.saveNetwork(id); err != nil {
+			return err
+		}
+	}
 	var result any
 	err := agent.LocalRequest(o.ctx, o.state.Store.Dir, id, action, &result)
 	if err != nil {
@@ -82,14 +93,68 @@ func (o *options) requestNetwork(action, id, name string) error {
 			if code == "" {
 				code = "NETWORK"
 			}
+			if code == "CONFIGURATION" && status.NetworkMode != "userspace" {
+				return &api.Error{Code: code, Message: "native VPN interface could not be configured; a restricted container can use agenttail vpn up --name " + name + " --userspace (loopback SOCKS5 TCP proxy)"}
+			}
 			return &api.Error{Code: code, Message: "VPN activation is still pending; the agent will retry automatically; see agenttail vpn status --name " + name}
 		}
 		if err != nil {
 			return err
 		}
+		if status.NetworkMode == "userspace" && !o.json {
+			o.notice("Userspace VPN ready. TCP connections use SOCKS5 at %s (VPN peer IPv4 addresses only).", status.SOCKS5)
+		}
 		return o.print(status)
 	}
 	return o.print(result)
+}
+
+func (o *options) networkFlags(command *cobra.Command, enabled bool) func() error {
+	if !enabled {
+		return func() error { return nil }
+	}
+	var userspace bool
+	var socks string
+	command.Flags().BoolVar(&userspace, "userspace", false, "use a TUN-free userspace VPN with a loopback SOCKS5 TCP proxy; --userspace=false restores native TUN")
+	command.Flags().StringVar(&socks, "socks5", netdev.DefaultSOCKS5, "userspace SOCKS5 loopback IP:port (implies --userspace)")
+	return func() error {
+		if !command.Flags().Changed("userspace") && !command.Flags().Changed("socks5") {
+			return nil
+		}
+		if command.Flags().Changed("socks5") {
+			if command.Flags().Changed("userspace") && !userspace {
+				return errors.New("--socks5 cannot be combined with --userspace=false")
+			}
+			userspace = true
+		}
+		settings := netdev.Settings{Mode: "native"}
+		if userspace {
+			settings = netdev.Settings{Mode: "userspace", SOCKS5: socks}
+		}
+		settings, err := settings.Normalized()
+		if err == nil {
+			o.network = &settings
+		}
+		return err
+	}
+}
+
+func (o *options) saveNetwork(id string) error {
+	if o.network == nil {
+		return nil
+	}
+	return o.state.Update(func(c *localstate.Config) error {
+		for i := range c.Keys {
+			if c.Keys[i].ID == id {
+				if c.Server != o.server {
+					return errors.New("local keys belong to a different server")
+				}
+				c.Keys[i].Network = *o.network
+				return nil
+			}
+		}
+		return errors.New("key is no longer authorized locally")
+	})
 }
 
 func waitForActivation(ctx context.Context, interval time.Duration, poll func(context.Context) (agent.Status, error)) (agent.Status, error) {

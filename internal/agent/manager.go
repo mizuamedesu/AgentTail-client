@@ -83,7 +83,7 @@ func (m *Manager) reload() error {
 	}
 	for id, old := range m.keys {
 		key, exists := wanted[id]
-		if !exists || key.GrantID != old.grant || old.key.options.Client.Origin != config.Server {
+		if !exists || key.GrantID != old.grant || old.key.options.Client.Origin != config.Server || key.Network != old.key.options.Metadata.Network {
 			old.key.gate.Stop()
 			old.cancel()
 			<-old.done
@@ -181,20 +181,19 @@ func (m *Manager) handle(w http.ResponseWriter, r *http.Request) {
 		fail("FORBIDDEN", "local request key scope mismatch", 403)
 		return
 	}
+	if input.Action != "up" && input.Action != "down" && input.Action != "sync" {
+		fail("FORBIDDEN", "operation is outside the local key scope", 403)
+		return
+	}
+	// Apply an atomically saved network-mode change before acknowledging up.
+	// This also loads a just-approved device without waiting for the timer.
+	if err := m.reload(); err != nil {
+		fail("INTERNAL", "local credentials could not be loaded", 500)
+		return
+	}
 	m.mu.Lock()
 	entry := m.keys[input.KeyID]
 	m.mu.Unlock()
-	if entry == nil {
-		// A just-approved device can request up before the periodic reload.
-		// Load only credentials already persisted in this machine's OS store.
-		if err := m.reload(); err != nil {
-			fail("INTERNAL", "local credentials could not be loaded", 500)
-			return
-		}
-		m.mu.Lock()
-		entry = m.keys[input.KeyID]
-		m.mu.Unlock()
-	}
 	if entry == nil {
 		fail("FORBIDDEN", "key is not authorized on this machine", 403)
 		return

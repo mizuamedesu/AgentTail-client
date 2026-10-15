@@ -53,7 +53,10 @@ func NewKey(options Options) (*Key, error) {
 		return nil, errors.New("agent credential does not match the selected key")
 	}
 	if options.Factory == nil {
-		options.Factory = netdev.New
+		options.Factory, err = metadata.Network.Factory()
+		if err != nil {
+			return nil, err
+		}
 	}
 	if options.STUN == nil {
 		options.STUN = []transport.ICEServer{{URLs: []string{"stun:stun.cloudflare.com:3478"}}}
@@ -329,12 +332,21 @@ func (k *Key) Status() Status {
 	defer k.mu.Unlock()
 	s := Status{ID: k.id, Name: k.name, Public: k.public, Instance: k.instance, Address: k.address, State: "down", Desired: "down", LastSync: k.lastSync, Problem: k.problem, Authorized: k.gate.Valid(), Peers: []PeerStatus{}, Sent: k.retiredSent, Received: k.retiredReceived, Dropped: k.budget.DroppedBytes()}
 	s.CIDR = k.cidr
+	s.NetworkMode = k.options.Metadata.Network.Mode
+	if s.NetworkMode == "" {
+		s.NetworkMode = "native"
+	}
 	if k.desired.Load() {
 		s.Desired = "up"
 		s.State = "connecting"
 	}
 	if k.network != nil && s.Authorized {
-		s.Interface = k.network.Name()
+		if proxy, ok := k.network.(netdev.Proxy); ok {
+			s.NetworkMode = "userspace"
+			s.SOCKS5 = proxy.SOCKS5Address()
+		} else {
+			s.Interface = k.network.Name()
+		}
 		s.State = "up"
 	}
 	if k.terminal.Load() {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/mizuamedesu/AgentTail-client/internal/api"
 	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
+	"github.com/mizuamedesu/AgentTail-client/internal/netdev"
 	"github.com/mizuamedesu/AgentTail-client/internal/notices"
 	"github.com/mizuamedesu/AgentTail-client/internal/platform"
 	"github.com/spf13/cobra"
@@ -31,6 +32,7 @@ type options struct {
 	state     *localstate.State
 	config    localstate.Config
 	ctx       context.Context
+	network   *netdev.Settings
 }
 type forwardedExit struct{ code int }
 

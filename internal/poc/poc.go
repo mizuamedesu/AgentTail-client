@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	netstack "github.com/mizuamedesu/AgentTail-client/internal/testnet"
+	netstack "github.com/mizuamedesu/AgentTail-client/internal/netstack"
 	"github.com/mizuamedesu/AgentTail-client/internal/transport"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/icmp"

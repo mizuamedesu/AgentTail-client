@@ -20,8 +20,49 @@ root 権限やディスク全体へのアクセスを得た者は復号できる
 プロセス監視・再起動を行うスーパーバイザーを使用します。
 コンテナーの再作成・再起動後は、永続ボリュームにインストールと状態を保存し、
 entrypoint から `agenttail service start` を実行してください。
-VPN 通信には `/dev/net/tun` と `CAP_NET_ADMIN` が必要です。
-この権限がない環境でも CLI の導入・承認はできますが、VPN 接続には実行環境の権限設定が必要です。
+標準の native モードは `/dev/net/tun` と `CAP_NET_ADMIN` を使います。
+この権限がない環境では、次の userspace モードで VPN 内の TCP サービスへ接続できます。
+
+## TUN のない環境（gVisor コンテナーなど）
+
+dev.20 以降は gVisor netstack によるユーザー空間の VPN に対応します。
+新規導入、または既存インストールの更新と切り替え:
+
+```sh
+curl -fsS https://agenttail.mizuame.app/install.sh | sh -s -- --vpn <VPN名> --userspace
+```
+
+導入済みの dev.20 以降で、承認済みの VPN を切り替える場合:
+
+```sh
+/usr/local/lib/agenttail/agenttail vpn up --name <VPN名> --userspace
+```
+
+Linux の既存シェルでは `. /etc/profile.d/agenttail.sh` でも PATH を反映できます。
+macOS の絶対パスは `/Library/AgentTail/agenttail` です。
+端末の秘密鍵と承認は再利用され、再承認は不要です。有効な承認をまだ持たない場合は承認画面が表示されます。
+モードとポートは VPN ごとに保存され、サービス再起動後も維持します。
+複数の VPN を使う場合は `--socks5 127.0.0.1:1081` など異なるポートを指定してください。
+
+起動後は `vpn status --name <VPN名>` に `network_mode: userspace` と
+`socks5: 127.0.0.1:1080` が表示されます。アプリケーションから SOCKS5 を指定して接続します。
+`<VPN-IP>` は接続先端末の VPN 用 IPv4 アドレスです。
+
+```sh
+curl --socks5-hostname 127.0.0.1:1080 http://<VPN-IP>:8080/
+ssh -o 'ProxyCommand=nc -X 5 -x 127.0.0.1:1080 %h %p' user@<VPN-IP>
+```
+
+SSH の例は SOCKS5 対応の OpenBSD netcat を使います。
+SOCKS5 の TCP CONNECT のみ対応し、IPv4 リテラルを指定します。DNS 解決、UDP、ping、
+OS 全体の透過ルーティング、この端末のホスト側サービスへの着信転送は提供しません。
+待受は loopback のみに制限し、接続先も最新の ACL で許可された VPN ピアに限定します。
+同じ端末のローカルプロセスはこのプロキシを利用できます。
+WireGuard 暗号化、ICE/TURN、速度制限、承認期限を適用し、ACL の削除、down、失効時は既存の接続も閉じます。
+停止は `agenttail vpn down --name <VPN名>`、native TUN へ戻す場合は
+`agenttail vpn up --name <VPN名> --userspace=false` を使います。
+
+## OS ごとの保管とビルド
 
 Linux/riscv64 版は `/etc/agenttail` に host 形式で保存し、常駐サービスには BusyBox init を使用します。
 別の init を使う環境では `--no-service` で導入し、エージェントをフォアグラウンドで実行します。

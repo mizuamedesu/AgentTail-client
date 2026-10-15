@@ -22,7 +22,7 @@ import (
 	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
 	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
 	"github.com/mizuamedesu/AgentTail-client/internal/netdev"
-	netstack "github.com/mizuamedesu/AgentTail-client/internal/testnet"
+	netstack "github.com/mizuamedesu/AgentTail-client/internal/netstack"
 	"github.com/mizuamedesu/AgentTail-client/internal/transport"
 	"github.com/pion/logging"
 	"github.com/pion/turn/v5"
@@ -52,6 +52,7 @@ type recoveryPair struct {
 
 type recoveryOptions struct {
 	relay            bool
+	userspace        string // first endpoint uses the production userspace factory
 	failFirstConnect bool
 	failFlow         bool
 	publicRelay      bool
@@ -162,7 +163,7 @@ func newRecoveryPairWithOptions(t *testing.T, options recoveryOptions) *recovery
 		if err != nil {
 			t.Fatal(err)
 		}
-		factory := func(_ string, private []byte, address string) (netdev.Interface, error) {
+		var factory netdev.Factory = func(_ string, private []byte, address string) (netdev.Interface, error) {
 			tunDevice, network, err := netstack.CreateNetTUN([]netip.Addr{netip.MustParseAddr(address)}, nil, netdev.MTU)
 			if err != nil {
 				return nil, err
@@ -173,6 +174,10 @@ func newRecoveryPairWithOptions(t *testing.T, options recoveryOptions) *recovery
 			pair.tuns[i] = observed
 			pair.mu.Unlock()
 			return netdev.NewWithTUN(observed, nil, private)
+		}
+		if i == 0 && options.userspace != "" {
+			meta.Network = netdev.Settings{Mode: "userspace", SOCKS5: options.userspace}
+			factory = nil
 		}
 		key, err := NewKey(Options{Client: client, Metadata: meta, Credential: localstate.KeyCredential{KeyID: id, Public: wire.Public, Private: wire.Private, Token: entry.token}, Factory: factory,
 			STUN: []transport.ICEServer{}, LoopbackOnly: !options.publicRelay, ForceRelayForTest: options.relay, RelayOnlyForTest: options.relay})

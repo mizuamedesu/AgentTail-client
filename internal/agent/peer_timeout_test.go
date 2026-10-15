@@ -17,7 +17,7 @@ import (
 	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
 	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
 	"github.com/mizuamedesu/AgentTail-client/internal/netdev"
-	netstack "github.com/mizuamedesu/AgentTail-client/internal/testnet"
+	netstack "github.com/mizuamedesu/AgentTail-client/internal/netstack"
 	"github.com/mizuamedesu/AgentTail-client/internal/transport"
 )
 

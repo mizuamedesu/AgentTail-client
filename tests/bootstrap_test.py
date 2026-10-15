@@ -26,13 +26,14 @@ class BootstrapTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temporary.cleanup()
 
-    def attempt(self, cpu, arch, *, source=None, tamper=None, system='Linux', options=(), systemd=True):
+    def attempt(self, cpu, arch, *, source=None, tamper=None, system='Linux', options=(), systemd=True, ip=True):
         with tempfile.TemporaryDirectory(dir=self.root) as directory:
             base = Path(directory)
             binaries = base / 'bin'
             binaries.mkdir()
             artifact = base / f'agenttail-linux-{arch}'
             artifact.write_text('#!/bin/sh\nprintf "%s\\n" "$@" >> "$BOOT_EXEC"\n')
+            artifact.chmod(0o755)
             raw = artifact.read_bytes()
             now = int(time.time())
             manifest = base / 'manifest.txt'
@@ -52,6 +53,8 @@ class BootstrapTests(unittest.TestCase):
             for name, script in stubs.items():
                 if name == 'systemd-creds' and not systemd:
                     continue
+                if name == 'ip' and not ip:
+                    continue
                 path = binaries/name
                 path.write_text(script)
                 path.chmod(0o755)
@@ -59,6 +62,7 @@ class BootstrapTests(unittest.TestCase):
                 (binaries/name).symlink_to(shutil.which(name))
             env = dict(os.environ, PATH=str(binaries), BOOT_OS=system, BOOT_CPU=cpu, BOOT_FILES=str(base), BOOT_EXEC=str(base/'executed'), BOOT_FETCH=str(base/'fetched'))
             script = (ROOT/'install/install.sh.in').read_text()
+            script = script.replace("installed_cli='/usr/local/lib/agenttail/agenttail'", "installed_cli='"+str(artifact)+"'")
             # Standalone BusyBox ash resolves its uname applet before PATH.
             # A shell function supplies the simulated kernel CPU in both shells.
             script = 'uname() { case "$1" in -s) echo "$BOOT_OS";; -m) echo "$BOOT_CPU";; esac; }\n' + script
@@ -105,6 +109,15 @@ class BootstrapTests(unittest.TestCase):
         result, executed, _ = self.attempt('x86_64', 'amd64', options=['--ssh-private-key', 'work laptop'])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(executed.splitlines(), ['--server', 'https://agenttail-api.mizuame.app', 'ssh', 'install-private', '--key', 'work laptop'])
+
+    def test_userspace_join_needs_no_ip_command(self):
+        result, executed, _ = self.attempt('x86_64', 'amd64', ip=False, options=['--vpn', 'test-vpn', '--userspace', '--socks5', '127.0.0.1:1081'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('vpn\njoin\n--name\ntest-vpn\n--userspace\n--socks5\n127.0.0.1:1081\n--up=false\n', executed)
+        result, executed, fetched = self.attempt('x86_64', 'amd64', ip=False)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('--userspace', result.stderr)
+        self.assertEqual(executed+fetched, '')
 
     def test_unsupported_cpu_has_diagnostic_and_no_download(self):
         result, executed, fetched = self.attempt('armv7l','arm64')

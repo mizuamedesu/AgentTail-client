@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,9 +17,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mizuamedesu/AgentTail-client/internal/agent"
 	"github.com/mizuamedesu/AgentTail-client/internal/api"
 	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
 	"github.com/mizuamedesu/AgentTail-client/internal/localstate"
+	"github.com/mizuamedesu/AgentTail-client/internal/netdev"
 )
 
 func TestDeviceAuthorizationProbe(t *testing.T) {
@@ -147,5 +150,144 @@ func TestNativeVPNJoinRecovery(t *testing.T) {
 				}
 			}
 		})
+	}
+	t.Run("userspace mode and service restart preserve approval", testNativeUserspaceRestart)
+}
+
+func testNativeUserspaceRestart(t *testing.T) {
+	state, err := localstate.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPair, err := cryptobox.GenerateWireGuard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(keyPair.Private)
+	key := localstate.Key{ID: uuid.NewString(), VPNID: uuid.NewString(), GrantID: uuid.NewString(), Name: "userspace-restart", Public: keyPair.Public, Expires: time.Now().Add(time.Hour).Unix()}
+	credential := localstate.KeyCredential{KeyID: key.ID, Public: key.Public, Private: keyPair.Private, Token: "atk_" + strings.Repeat("b", 43), Expires: key.Expires}
+	if err := state.Store.Put("key/"+key.ID, credential); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { state.Store.Delete("key/" + key.ID) })
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+credential.Token {
+			t.Error("userspace mode changed device credential")
+			w.WriteHeader(403)
+			return
+		}
+		var output any
+		switch r.URL.Path {
+		case "/api/agent/lease":
+			var input map[string]any
+			json.NewDecoder(r.Body).Decode(&input)
+			output = map[string]any{"key_id": key.ID, "instance_id": input["instance_id"], "ttl_seconds": 60}
+		case "/api/agent/sync":
+			instance := r.URL.Query().Get("instance_id")
+			output = map[string]any{"key": map[string]any{"key_id": key.ID, "vpn_id": key.VPNID, "public_key": key.Public, "name": key.Name, "virtual_ip": "100.126.251.17"}, "instance_id": instance, "desired_state": "up", "limits": map[string]int{"max_connections": 10, "bytes_per_second": 1250000}, "peers": []any{}, "signals": []any{}, "commands": []any{}, "lease_remaining_seconds": 60}
+		default:
+			w.WriteHeader(404)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "data": output})
+	}))
+	defer server.Close()
+	if err := state.Update(func(c *localstate.Config) error {
+		c.Server = server.URL
+		c.AllowLocalHTTP = true
+		c.Keys = []localstate.Key{key}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reservation, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := reservation.Addr().String()
+	reservation.Close()
+	settings := netdev.Settings{Mode: "userspace", SOCKS5: address}
+	o := &options{ctx: context.Background(), state: state, server: server.URL, network: &settings, json: true}
+	if err := o.saveNetwork(key.ID); err != nil {
+		t.Fatal(err)
+	}
+	start := func() func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() { done <- agent.Serve(ctx, state) }()
+		stop := func() {
+			cancel()
+			if err := <-done; err != nil {
+				t.Error(err)
+			}
+		}
+		return stop
+	}
+	status := func() agent.Status {
+		var output struct {
+			Keys []agent.Status `json:"keys"`
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if agent.LocalRequest(ctx, state.Store.Dir, key.ID, "status", &output) != nil || len(output.Keys) != 1 {
+			return agent.Status{}
+		}
+		return output.Keys[0]
+	}
+	wait := func(check func(agent.Status) bool) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if check(status()) {
+				return
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		t.Fatalf("userspace manager did not reach expected state: %+v", status())
+	}
+	stop := start()
+	defer func() {
+		if stop != nil {
+			stop()
+		}
+	}()
+	wait(func(s agent.Status) bool { return s.ID == key.ID })
+	if err := o.requestNetwork("up", key.ID, key.Name); err != nil {
+		t.Fatal(err)
+	}
+	wait(func(s agent.Status) bool {
+		return s.State == "up" && s.NetworkMode == "userspace" && s.SOCKS5 == address
+	})
+	if err := agent.LocalRequest(o.ctx, state.Store.Dir, key.ID, "down", nil); err != nil {
+		t.Fatal(err)
+	}
+	settings = netdev.Settings{Mode: "native"}
+	if err := o.saveNetwork(key.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.LocalRequest(o.ctx, state.Store.Dir, key.ID, "sync", nil); err != nil {
+		t.Fatal(err)
+	}
+	wait(func(s agent.Status) bool { return s.NetworkMode == "native" && s.Desired == "down" && s.SOCKS5 == "" })
+	settings = netdev.Settings{Mode: "userspace", SOCKS5: address}
+	if err := o.requestNetwork("up", key.ID, key.Name); err != nil {
+		t.Fatal(err)
+	}
+	stop()
+	stop = nil
+	if c, err := net.DialTimeout("tcp", address, time.Second); err == nil {
+		c.Close()
+		t.Fatal("stopped manager retained the proxy")
+	}
+	stop = start()
+	wait(func(s agent.Status) bool { return s.State == "up" && s.Authorized && s.SOCKS5 == address })
+	config, err := state.Read()
+	if err != nil || len(config.Keys) != 1 || config.Keys[0].Network != settings || !config.Keys[0].AutoUp || config.Keys[0].GrantID != key.GrantID {
+		t.Fatalf("mode change or restart lost local metadata: %+v, %v", config, err)
+	}
+	stored, err := state.LoadKey(key)
+	defer clear(stored.Private)
+	if err != nil || !reflect.DeepEqual(stored, credential) {
+		t.Fatal("mode change or restart replaced the approved credential", err)
 	}
 }

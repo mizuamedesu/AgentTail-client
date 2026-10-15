@@ -7,6 +7,11 @@ Linux（amd64 / arm64 / riscv64）、macOS（amd64 / arm64）、Windows（amd64 
 
 RISC-V の配布対象は Linux/riscv64（64-bit、RV64GC）です。
 
+gVisor など `/dev/net/tun` や `CAP_NET_ADMIN` を使えない環境では、
+`agenttail vpn up --name <VPN名> --userspace` で gVisor netstack による
+SOCKS5 TCP 接続を利用できます。既存の端末承認は保持します。
+設定と使用例は [インストール手順](docs/INSTALLATION.ja.md#tun-のない環境gvisor-コンテナーなど) を参照してください。
+
 Web UI、ブラウザー用の暗号/共有パッケージ、Workers、D1、課金・運用処理は非公開リポジトリで管理します。
 このリポジトリとソース archive に Web のコード・履歴は含めません。
 

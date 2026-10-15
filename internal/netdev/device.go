@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Package netdev owns a TUN device, WireGuard encryption and virtual-IP routes.
+// Package netdev owns a native or userspace IP device and WireGuard encryption.
 // It never changes DNS, forwarding, the default route, or application firewalls.
 package netdev
 
@@ -115,8 +115,10 @@ func NewWithTUN(t tun.Device, routes routeManager, private []byte) (Interface, e
 		d.Close()
 		return nil, errors.New("WireGuard interface initialization failed")
 	}
-	registerVPNInterface(name, 1)
-	d.registered = true
+	if routes != nil {
+		registerVPNInterface(name, 1)
+		d.registered = true
+	}
 	return d, nil
 }
 func (d *Device) Name() string { return d.name }

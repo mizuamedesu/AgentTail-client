@@ -8,7 +8,7 @@ tests and documentation, is licensed under the GNU General Public License,
 version 3 or (at your option) any later version (SPDX: GPL-3.0-or-later).
 The complete license is in LICENSE. AgentTail is supplied WITHOUT ANY WARRANTY.
 
-Third-party code retains its upstream licenses: internal/testnet/LICENSE,
+Third-party code retains its upstream licenses: internal/netstack/LICENSE,
 internal/notices/native.txt and the Wintun license shipped in Windows releases.
 Go dependencies retain their own licenses and are vendored in source archives.
 

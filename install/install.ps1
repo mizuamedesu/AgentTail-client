@@ -4,6 +4,8 @@ param(
     [string]$Source = 'https://agenttail.mizuame.app/downloads/current',
     [string]$Server = 'https://agenttail-api.mizuame.app',
     [string]$Vpn = '',
+    [switch]$Userspace,
+    [string]$Socks5 = '',
     [string]$SshPublicKey = '',
     [string]$SshPrivateKey = '',
     [string]$SshExpectedPublicKey = '',
@@ -71,13 +73,20 @@ try {
     if ($Vpn) {
         $installedCli = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'AgentTail\agenttail.cmd'
         $loginArguments = @('--server', $Server, 'vpn', 'join', '--name', $Vpn)
+        if ($Userspace -or $Socks5) { $loginArguments += '--userspace' }
+        if ($Socks5) { $loginArguments += @('--socks5', $Socks5) }
         if ($NoService) { $loginArguments += '--up=false' }
         Write-Host 'Joining the VPN. If approval is needed, open the link printed below.'
         & $installedCli @loginArguments
         if ($LASTEXITCODE -ne 0) { throw "Device authorization or connection failed: $LASTEXITCODE" }
         if ($NoService) { Write-Host 'Authorized. Start agenttail agent run, then agenttail vpn up --name <vpn-name>.' }
     } else {
-        Write-Host 'Run agenttail vpn join --name <vpn-name> to connect a device.'
+        if ($Userspace -or $Socks5) {
+            $proxyAddress = if ($Socks5) { $Socks5 } else { '127.0.0.1:1080' }
+            Write-Host "Run agenttail vpn join --name <vpn-name> --userspace --socks5 $proxyAddress to connect a device."
+        } else {
+            Write-Host 'Run agenttail vpn join --name <vpn-name> to connect a device.'
+        }
     }
 } finally {
     Remove-Item -Recurse -Force $releaseDir

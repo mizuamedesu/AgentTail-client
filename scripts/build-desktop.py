@@ -77,7 +77,8 @@ with tempfile.TemporaryDirectory(prefix='agenttail-desktop-build-') as temp:
         'sha256': hashlib.sha256(archive.read_bytes()).hexdigest(),
         'binary_sha256': hashlib.sha256(executable.read_bytes()).hexdigest(),
         'build_metadata': metadata, 'native_version_executed': True,
-        'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()}
+        'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+        'native_window_tested': a.window_smoke}
     if proof['bytes'] > 24*1024*1024: raise RuntimeError('desktop bundle exceeds the static asset limit')
     archive.with_name(archive.name+'.build.json').write_text(json.dumps(proof, indent=2)+'\n')
     archive.with_name(archive.name+'.sha256').write_text(proof['sha256']+'  '+archive.name+'\n', encoding='ascii', newline='\n')

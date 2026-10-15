@@ -129,11 +129,23 @@ jobs:
         env:
           AGENTTAIL_DESKTOP_SCREENSHOT: build/desktop-controls.png
         run: go test -race -p 1 -tags desktop,ci ./internal/desktopui
-      - name: Build and render native desktop window
+      - name: Build and exercise native Linux desktop window
+        if: runner.os == 'Linux'
         env:
           NATIVE_OS: ${{ matrix.os }}
           NATIVE_ARCH: ${{ matrix.arch }}
         run: python3 scripts/build-desktop.py --dir build/desktop --version "$RELEASE_VERSION" --os "$NATIVE_OS" --arch "$NATIVE_ARCH" --window-smoke
+      - name: Build native macOS and Windows desktop bundles
+        if: runner.os != 'Linux'
+        env:
+          NATIVE_OS: ${{ matrix.os }}
+          NATIVE_ARCH: ${{ matrix.arch }}
+        run: |
+          # Hosted macOS has no accelerated NSGL format; unattended Windows
+          # cannot complete the on-screen check. Keep native execution, macOS
+          # signing, common GUI controls and full native install/helper checks.
+          # Linux above exercises the real window, selection and refresh.
+          python3 scripts/build-desktop.py --dir build/desktop --version "$RELEASE_VERSION" --os "$NATIVE_OS" --arch "$NATIVE_ARCH"
       - name: Desktop install, user execution, scoped helper and uninstall
         if: runner.os != 'Windows'
         run: sudo env TMPDIR=/tmp GITHUB_ACTIONS=true python3 tests/desktop_install_lifecycle.py --native build/native --desktop build/desktop --report build/desktop-lifecycle.json

@@ -107,7 +107,7 @@ with tempfile.TemporaryDirectory(prefix='agenttail-desktop-acceptance-') as temp
     finally:
         if helper is not None and helper.poll() is None:
             helper.terminate();helper.wait(timeout=10)
-        if installed:
+        if installed or (root/'installation.json').exists():
             removed=run('uninstall','--yes','--offline','--purge')['data']
             assert removed['uninstalled'] and not (root/'installation.json').exists()
             assert not (root/'desktop/installation.json').exists()

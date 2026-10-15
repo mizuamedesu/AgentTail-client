@@ -277,7 +277,18 @@ func (m *Manager) RemoveDesktop() error {
 		return err
 	}
 	if r == nil {
-		return nil
+		data, e := os.ReadFile(filepath.Join(m.desktopRoot(), "pending.json"))
+		if errors.Is(e, os.ErrNotExist) {
+			return nil
+		}
+		if e != nil {
+			return e
+		}
+		var pending DesktopRecord
+		if json.Unmarshal(data, &pending) != nil || !safeVersion.MatchString(pending.Version) || !digestPattern.MatchString(pending.SHA256) || pending.ReleaseID != pending.Version+"-"+pending.SHA256[:16] {
+			return errors.New("invalid pending desktop installation record")
+		}
+		r = &pending
 	}
 	if err = m.desktopShortcut(r, false); err != nil {
 		return err

@@ -40,6 +40,9 @@ func (m *Manager) desktopShortcut(record *DesktopRecord, add bool) error {
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 	target := desktopExecutable(filepath.Join(m.desktopRoot(), "releases", record.ReleaseID))
 	script := "$ErrorActionPreference='Stop';$shell=New-Object -ComObject WScript.Shell;$link=" + quote(entry) + ";if(Test-Path -LiteralPath $link){$old=$shell.CreateShortcut($link);if(-not $old.TargetPath.StartsWith(" + quote(filepath.Join(m.desktopRoot(), "releases")+string(os.PathSeparator)) + ",[StringComparison]::OrdinalIgnoreCase)){throw 'Existing shortcut is not managed by AgentTail'}};"
+	if !add {
+		script = strings.ReplaceAll(script, "throw 'Existing shortcut is not managed by AgentTail'", "exit 0")
+	}
 	if add {
 		script += "$shortcut=$shell.CreateShortcut($link);$shortcut.TargetPath=" + quote(target) + ";$shortcut.WorkingDirectory=" + quote(m.Root) + ";$shortcut.Description='AgentTail VPN manager';$shortcut.Save()"
 	} else {

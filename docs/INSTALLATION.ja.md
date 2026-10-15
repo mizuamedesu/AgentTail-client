@@ -31,6 +31,7 @@ dev.22 以降は、VPN 一覧と接続・切断ボタンを持つデスクトッ
 macOS Intel/ARM と Windows x64 は通常のインストーラーで導入します。
 Linux x64 はデスクトップ環境（DISPLAY または WAYLAND_DISPLAY がある場合）で自動導入します。
 Linux/Windows ARM64 と RISC-V は CLI を使用します。
+GUI は OpenGL を利用できるデスクトップ環境が必要です。macOS の GPU を持たない仮想環境は対象外です。
 
 macOS はアプリケーションの AgentTail、Windows はスタートメニューの AgentTail、
 Linux はアプリケーションメニューの AgentTail を開きます。`agenttail gui` でも開けます。

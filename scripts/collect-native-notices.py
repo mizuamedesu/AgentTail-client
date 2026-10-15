@@ -17,6 +17,11 @@ def values(raw):
 
 
 notices = {}
+adapter = Path('internal/netstack/LICENSE')
+notices['WireGuard netstack adapter / internal/netstack/LICENSE'] = (
+    'Copyright (C) 2017-2025 WireGuard LLC. All Rights Reserved.\n\n'
+    + adapter.read_text(encoding='utf-8')
+)
 goroot = Path(subprocess.check_output(['go', 'env', 'GOROOT'], text=True).strip()).resolve()
 for system in ('linux', 'darwin', 'windows'):
     environment = dict(os.environ, GOOS=system, GOARCH='amd64', CGO_ENABLED='0')

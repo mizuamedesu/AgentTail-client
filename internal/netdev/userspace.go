@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net"
@@ -14,6 +15,8 @@ import (
 	"time"
 
 	"github.com/mizuamedesu/AgentTail-client/internal/netstack"
+	"github.com/mizuamedesu/AgentTail-client/internal/transport"
+	"golang.zx2c4.com/wireguard/device"
 )
 
 type proxyFlow struct {
@@ -22,8 +25,8 @@ type proxyFlow struct {
 	remote net.Conn
 }
 
-// userspaceDevice has no host TUN, host route, resolver, or host dialer. TCP
-// CONNECT reaches only peers installed by a validated control-plane sync.
+// Outgoing SOCKS CONNECT reaches only authorized VPN peers. Incoming TCP/UDP
+// reaches this host's loopback services at the same port, without an OS TUN.
 type userspaceDevice struct {
 	*Device
 	stack     *netstack.Net
@@ -33,6 +36,9 @@ type userspaceDevice struct {
 	mu        sync.Mutex
 	peers     map[netip.Addr]string
 	clients   map[net.Conn]*proxyFlow
+	inbound   map[*inboundFlow]struct{}
+	address   netip.Addr
+	proxyDone func()
 	closed    bool
 	work      sync.WaitGroup
 	closeOnce sync.Once
@@ -43,28 +49,66 @@ func newUserspace(_ string, private []byte, address, socks string) (Interface, e
 	if err != nil {
 		return nil, err
 	}
+	proxyAddress, err := netip.ParseAddrPort(socks)
+	if err != nil || !proxyAddress.Addr().IsLoopback() {
+		return nil, errors.New("SOCKS5 must use a literal loopback address")
+	}
+	releasePort := func() {}
+	if proxyAddress.Port() != 0 {
+		releasePort = reserveProxyPort(proxyAddress.Port())
+	}
 	listener, err := net.Listen("tcp", socks)
 	if err != nil {
+		releasePort()
 		return nil, errors.New("SOCKS5 loopback listener could not be opened; choose another --socks5 port")
+	}
+	if proxyAddress.Port() == 0 {
+		releasePort = reserveProxyPort(uint16(listener.Addr().(*net.TCPAddr).Port))
 	}
 	tun, stack, err := netstack.CreateNetTUN([]netip.Addr{ip}, nil, MTU)
 	if err != nil {
 		listener.Close()
+		releasePort()
 		return nil, err
 	}
 	device, err := NewWithTUN(tun, nil, private)
 	if err != nil {
 		listener.Close()
+		releasePort()
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &userspaceDevice{Device: device.(*Device), stack: stack, listener: listener, ctx: ctx, cancel: cancel, peers: map[netip.Addr]string{}, clients: map[net.Conn]*proxyFlow{}}
+	d := &userspaceDevice{Device: device.(*Device), stack: stack, listener: listener, ctx: ctx, cancel: cancel, peers: map[netip.Addr]string{}, clients: map[net.Conn]*proxyFlow{}, inbound: map[*inboundFlow]struct{}{}, address: ip, proxyDone: releasePort}
+	stack.ForwardTCP(d.forwardTCP)
+	stack.ForwardUDP(d.forwardUDP)
 	d.work.Add(1)
 	go d.serve()
 	return d, nil
 }
 
 func (d *userspaceDevice) SOCKS5Address() string { return d.listener.Addr().String() }
+
+func (d *userspaceDevice) ConnectPeer(id string, link transport.Datagram) error {
+	if err := d.Device.ConnectPeer(id, link); err != nil {
+		return err
+	}
+	// A lease outage can recreate this userspace stack while the remote OS
+	// peer still has an older WireGuard keypair. Incoming-only applications do
+	// not generate a packet here to initiate a fresh handshake. A single
+	// encrypted keepalive makes the new receiver usable without an outbound
+	// SOCKS request; ICE still owns the ongoing underlay keepalives.
+	d.Device.mu.Lock()
+	defer d.Device.mu.Unlock()
+	if p, ok := d.Device.peers[id]; ok && !d.Device.closed {
+		var public device.NoisePublicKey
+		if _, err := hex.Decode(public[:], []byte(p.public)); err == nil {
+			if peer := d.Device.wg.LookupPeer(public); peer != nil {
+				peer.SendKeepalive()
+			}
+		}
+	}
+	return nil
+}
 
 func (d *userspaceDevice) SetPeer(id, public, address string) error {
 	d.mu.Lock()
@@ -93,6 +137,11 @@ func (d *userspaceDevice) RemovePeer(id string) error {
 			d.closeFlow(client, flow)
 		}
 	}
+	for flow := range d.inbound {
+		if flow.peer == id {
+			d.closeInbound(flow)
+		}
+	}
 	return err
 }
 
@@ -114,9 +163,13 @@ func (d *userspaceDevice) Close() error {
 		for client, flow := range d.clients {
 			d.closeFlow(client, flow)
 		}
+		for flow := range d.inbound {
+			d.closeInbound(flow)
+		}
 		d.mu.Unlock()
 		d.Device.Close()
 		d.work.Wait()
+		d.proxyDone()
 	})
 	return nil
 }

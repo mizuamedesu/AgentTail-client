@@ -24,3 +24,8 @@ The native mode still uses OS TUN/IP. Integration tests and `turn-poc` share thi
 The complete upstream license is in `LICENSE`.
 
 Source: https://git.zx2c4.com/wireguard-go/tree/tun/netstack/tun.go?id=ecfc5a8d5446
+
+`forward.go` is separate GPL-3.0-or-later AgentTail code. It exposes bounded TCP
+forwarder requests and connected UDP sessions to the production userspace device.
+UDP installs its endpoint synchronously and queues the first datagram without
+retaining or cloning the packet after the protocol callback returns.

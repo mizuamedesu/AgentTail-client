@@ -1,0 +1,120 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package netdev
+
+import (
+	"bytes"
+	"context"
+	"io"
+	"net"
+	"net/netip"
+	"testing"
+	"time"
+
+	"github.com/mizuamedesu/AgentTail-client/internal/cryptobox"
+)
+
+type userspaceDatagram struct {
+	*net.UDPConn
+	target *net.UDPAddr
+}
+
+func (d userspaceDatagram) Write(p []byte) (int, error) { return d.WriteToUDP(p, d.target) }
+
+func TestTwoUserspaceReceiversAndFreshWireGuardSession(t *testing.T) {
+	first, err := cryptobox.GenerateWireGuard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(first.Private)
+	second, err := cryptobox.GenerateWireGuard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(second.Private)
+	create := func(private []byte, address string) *userspaceDevice {
+		t.Helper()
+		d, err := newUserspace("test", private, address, "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { d.Close() })
+		return d.(*userspaceDevice)
+	}
+	sender := create(first.Private, "10.203.99.1")
+	receiver := create(second.Private, "10.203.99.2")
+	const senderID = "00000000-0000-4000-8000-000000000001"
+	const receiverID = "00000000-0000-4000-8000-000000000002"
+	if err := sender.SetPeer(receiverID, second.Public, "10.203.99.2"); err != nil {
+		t.Fatal(err)
+	}
+	connect := func(receiver *userspaceDevice) {
+		t.Helper()
+		if err := receiver.SetPeer(senderID, first.Public, "10.203.99.1"); err != nil {
+			t.Fatal(err)
+		}
+		local, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { local.Close() })
+		remote, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { remote.Close() })
+		if err := sender.ConnectPeer(receiverID, userspaceDatagram{local, remote.LocalAddr().(*net.UDPAddr)}); err != nil {
+			t.Fatal(err)
+		}
+		if err := receiver.ConnectPeer(senderID, userspaceDatagram{remote, local.LocalAddr().(*net.UDPAddr)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	host, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { host.Close() })
+	go func() {
+		for {
+			connection, err := host.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer connection.Close()
+				connection.SetDeadline(time.Now().Add(10 * time.Second))
+				io.Copy(connection, connection)
+			}()
+		}
+	}()
+	check := func() {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		address := netip.AddrPortFrom(netip.MustParseAddr("10.203.99.2"), uint16(host.Addr().(*net.TCPAddr).Port))
+		client, err := sender.stack.DialContextTCPAddrPort(ctx, address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer client.Close()
+		client.SetDeadline(time.Now().Add(10 * time.Second))
+		want := []byte("TCP between two real encrypted userspace devices")
+		if _, err := client.Write(want); err != nil {
+			t.Fatal(err)
+		}
+		got := make([]byte, len(want))
+		if _, err := io.ReadFull(client, got); err != nil || !bytes.Equal(got, want) {
+			t.Fatal("encrypted userspace receiver failed", string(got), err)
+		}
+	}
+	connect(receiver)
+	check()
+	// Retain the sender's WireGuard identity and existing peer keypair while
+	// replacing only the receiver, as happens after its authorization expires.
+	sender.DisconnectPeer(receiverID)
+	receiver.Close()
+	receiver = create(second.Private, "10.203.99.2")
+	connect(receiver)
+	check()
+}

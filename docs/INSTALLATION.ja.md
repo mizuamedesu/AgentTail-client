@@ -83,13 +83,21 @@ ssh -o 'ProxyCommand=nc -X 5 -x 127.0.0.1:1080 %h %p' user@<VPN-IP>
 ```
 
 SSH の例は SOCKS5 対応の OpenBSD netcat を使います。
-SOCKS5 の TCP CONNECT のみ対応し、IPv4 リテラルを指定します。DNS 解決、UDP、ping、
-OS 全体の透過ルーティング、この端末のホスト側サービスへの着信転送は提供しません。
+発信プロキシは SOCKS5 の TCP CONNECT に対応し、IPv4 リテラルを指定します。
+SOCKS5 の DNS 解決・UDP ASSOCIATE と OS 全体の透過ルーティングは提供しません。
 待受は loopback のみに制限し、接続先も最新の ACL で許可された VPN ピアに限定します。
 同じ端末のローカルプロセスはこのプロキシを利用できます。
 WireGuard 暗号化、ICE/TURN、速度制限、承認期限を適用し、ACL の削除、down、失効時は既存の接続も閉じます。
 停止は `agenttail vpn down --name <VPN名>`、native TUN へ戻す場合は
 `agenttail vpn up --name <VPN名> --userspace=false` を使います。
+
+dev.24 以降は、認可された VPN ピアからこの端末の任意の TCP / UDP ポートへの受信を、
+同じホストの `127.0.0.1:<同じポート>` へ転送します。ポートごとの追加設定は不要です。
+SSH、HTTP、開発サーバーなどは loopback または `0.0.0.0` で待ち受けてください。
+SSH サーバー自体の導入・起動は OS 側で行います。ホスト側サービスから見た接続元は loopback です。
+UDP のメッセージ境界を保持し、通信のないセッションは30秒で閉じます。
+ACL の削除、VPN の down、承認失効・lease 期限切れでは、ホストへの接続も閉じます。
+AgentTail 自身の SOCKS ポートは、他 VPN への迂回接続を防ぐため受信転送の対象外です。
 
 ## OS ごとの保管とビルド
 

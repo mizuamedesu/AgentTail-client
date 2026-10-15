@@ -6,11 +6,35 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/mizuamedesu/AgentTail-client/internal/agent"
 	"github.com/mizuamedesu/AgentTail-client/internal/api"
 )
+
+func TestActivationWaitsForPreviousInstanceLease(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		ctx, cancel := context.WithTimeout(t.Context(), activationTimeout)
+		defer cancel()
+		status, err := waitForActivation(ctx, 250*time.Millisecond, func(context.Context) (agent.Status, error) {
+			elapsed := time.Since(start)
+			if elapsed < time.Minute {
+				return agent.Status{State: "error", Desired: "up", Problem: "CONFLICT"}, nil
+			}
+			// The old lease has expired, but the replacement agent renews on its
+			// next periodic sync, not at the exact server expiry timestamp.
+			if elapsed < time.Minute+agent.SyncInterval {
+				return agent.Status{State: "connecting", Desired: "up"}, nil
+			}
+			return agent.Status{State: "up", Desired: "up", Authorized: true, NetworkMode: "userspace", SOCKS5: "127.0.0.1:1080"}, nil
+		})
+		if err != nil || status.State != "up" || !status.Authorized {
+			t.Fatalf("replacement instance timed out before lease takeover: elapsed=%s, status=%+v, err=%v", time.Since(start), status, err)
+		}
+	})
+}
 
 func TestActivationWaitsForRecovery(t *testing.T) {
 	for _, problem := range []string{"NETWORK", "CONFIGURATION", "CONFLICT", "QUOTA_EXCEEDED"} {

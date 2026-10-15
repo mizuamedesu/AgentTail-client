@@ -23,7 +23,7 @@ import (
 )
 
 func TestActivationFailureClassificationAndRecovery(t *testing.T) {
-	for _, failure := range []string{"control", "configuration", "interface"} {
+	for _, failure := range []string{"control", "configuration", "interface", "previous instance"} {
 		t.Run(failure, func(t *testing.T) {
 			pair, err := cryptobox.GenerateWireGuard()
 			if err != nil {
@@ -43,6 +43,10 @@ func TestActivationFailureClassificationAndRecovery(t *testing.T) {
 				entry.info.Public = "wrong-key-scope"
 			case "interface":
 				interfaceFailed.Store(true)
+			case "previous instance":
+				entry.info.Instance = uuid.NewString()
+				entry.expires = time.Now().Add(time.Minute)
+				wantProblem = "CONFLICT"
 			}
 			server := httptest.NewServer(http.HandlerFunc(control.serve))
 			defer server.Close()
@@ -78,6 +82,9 @@ func TestActivationFailureClassificationAndRecovery(t *testing.T) {
 			control.mu.Lock()
 			control.fail = false
 			entry.info.Public = meta.Public
+			if failure == "previous instance" {
+				entry.expires = time.Time{}
+			}
 			control.mu.Unlock()
 			interfaceFailed.Store(false)
 			key.RequestSync()

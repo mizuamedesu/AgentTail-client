@@ -15,6 +15,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// A stopped process can retain the server lease for 60 seconds. Allow its
+// expiry, two agent retry intervals, and the lease/sync request timeouts.
+const activationTimeout = time.Minute + 2*agent.SyncInterval + 2*agent.RequestTimeout
+
 func (o *options) addNetwork(root *cobra.Command) {
 	for _, action := range []string{"up", "down", "status", "sync"} {
 		action := action
@@ -74,8 +78,9 @@ func (o *options) requestNetwork(action, id, name string) error {
 	if action == "up" {
 		// Allow the background agent to recover from an initial failed sync. Its
 		// status can also still contain a problem from before this up request.
-		ctx, cancel := context.WithTimeout(o.ctx, 2*agent.SyncInterval+agent.RequestTimeout)
+		ctx, cancel := context.WithTimeout(o.ctx, activationTimeout)
 		defer cancel()
+		conflictNotice := false
 		status, err := waitForActivation(ctx, 250*time.Millisecond, func(ctx context.Context) (agent.Status, error) {
 			var state struct {
 				Keys []agent.Status `json:"keys"`
@@ -85,6 +90,10 @@ func (o *options) requestNetwork(action, id, name string) error {
 			}
 			if len(state.Keys) != 1 || state.Keys[0].ID != id {
 				return agent.Status{}, &api.Error{Code: "INTERNAL", Message: "local agent returned an unexpected VPN status"}
+			}
+			if state.Keys[0].Problem == "CONFLICT" && !o.json && !conflictNotice {
+				o.notice("Waiting for VPN activation. After an update or mode change, the previous session may take up to 60 seconds to expire.")
+				conflictNotice = true
 			}
 			return state.Keys[0], nil
 		})

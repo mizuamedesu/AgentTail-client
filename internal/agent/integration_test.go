@@ -128,6 +128,14 @@ func (c *testControl) serve(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(400)
 			return
 		}
+		if p.info.Instance != "" && p.info.Instance != input.Instance && time.Now().Before(p.expires) {
+			// Match the production lease guard: a replacement process must wait
+			// for the previous live instance instead of overwriting its lease.
+			c.mu.Unlock()
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": map[string]string{"code": "CONFLICT", "message": "another instance owns the live lease"}})
+			return
+		}
 		// Match the real Worker: an expired lease becoming live is a peer change
 		// even when the process kept the same instance and desired state.
 		changed := p.info.Instance != input.Instance || p.desired != input.Desired || !time.Now().Before(p.expires)

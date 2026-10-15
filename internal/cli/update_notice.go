@@ -30,7 +30,7 @@ func updateNoticeAllowed(cmd *cobra.Command, json, interactive bool) bool {
 		top = top.Parent()
 	}
 	switch top.Name() {
-	case "agent", "completion", "install", "update", "uninstall", "licenses":
+	case "agent", "completion", "install", "update", "uninstall", "licenses", "gui":
 		return false
 	}
 	return true

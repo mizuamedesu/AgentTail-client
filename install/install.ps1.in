@@ -9,9 +9,12 @@ param(
     [string]$SshPublicKey = '',
     [string]$SshPrivateKey = '',
     [string]$SshExpectedPublicKey = '',
+    [switch]$Gui,
+    [switch]$NoGui,
     [switch]$NoService
 )
 $ErrorActionPreference = 'Stop'
+if ($Gui -and $NoGui) { throw 'Choose Gui or NoGui' }
 if (@(@($Vpn,$SshPublicKey,$SshPrivateKey) | Where-Object { $_ }).Count -gt 1) { throw 'Choose only one installation role' }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $sourceUri = [Uri]$Source
@@ -65,6 +68,8 @@ try {
     # user so skill installation uses that user's profile and privileges.
     $arguments = @('install','--https-checksums','--bundle',$releaseDir,'--source',$Source,'--server',$Server)
     if ($NoService) { $arguments += '--no-service' }
+    if ($Gui) { $arguments += '--gui=true' }
+    if ($NoGui) { $arguments += '--gui=false' }
     & $artifacts['vpn'] @arguments
     if ($LASTEXITCODE -ne 0) { throw "Installation failed: $LASTEXITCODE" }
     & $artifacts['vpn'] skills install

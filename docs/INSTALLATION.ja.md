@@ -25,6 +25,28 @@ entrypoint から `agenttail service start` を実行してください。
 標準の native モードは `/dev/net/tun` と `CAP_NET_ADMIN` を使います。
 この権限がない環境では、次の userspace モードで VPN 内の TCP サービスへ接続できます。
 
+## デスクトップ管理画面
+
+dev.22 以降は、VPN 一覧と接続・切断ボタンを持つデスクトップ GUI を同梱します。
+macOS Intel/ARM と Windows x64 は通常のインストーラーで導入します。
+Linux x64 はデスクトップ環境（DISPLAY または WAYLAND_DISPLAY がある場合）で自動導入します。
+Linux/Windows ARM64 と RISC-V は CLI を使用します。
+
+macOS はアプリケーションの AgentTail、Windows はスタートメニューの AgentTail、
+Linux はアプリケーションメニューの AgentTail を開きます。`agenttail gui` でも開けます。
+既存の端末承認を使い、VPN を個別に選んで接続・切断します。
+ウィンドウを閉じても常駐サービスと VPN の接続は維持されます。
+
+GUI を明示的に追加するには `install.sh --gui` または `agenttail gui install`、
+省略するには `install.sh --no-gui` を使います。PowerShell は `-Gui` / `-NoGui` です。
+導入済みの GUI は `agenttail update` で CLI とともに更新します。
+`agenttail gui uninstall` は GUI のみを削除し、`agenttail uninstall --yes` はサービスとともに削除します。
+
+GUI は通常ユーザーで実行し、起動時に OS の管理者承認を求めます。
+補助プロセスは現在のウィンドウに対してのみ状態表示・VPN ごとの上げ下げ・サービス起動を提供します。
+秘密鍵や端末資格情報は GUI へ渡しません。GUI のソースも配布するネイティブクライアントの範囲に含みます。
+Web サイトやサーバーの実装は含みません。
+
 ## TUN のない環境（gVisor コンテナーなど）
 
 dev.20 以降は gVisor netstack によるユーザー空間の VPN に対応します。

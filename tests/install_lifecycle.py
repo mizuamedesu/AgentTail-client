@@ -85,6 +85,8 @@ def main():
     state = Path(tempfile.mkdtemp(prefix='agenttail-install-state-'))
 
     def run(binary, *args, ok=True):
+        if args and args[0]=='install':
+            args=(args[0], '--gui=false', *args[1:])
         if a.https_checksums and args[0]=='install':
             args=(*args,'--https-checksums')
         # Match install.sh, including its restrictive umask after elevation.

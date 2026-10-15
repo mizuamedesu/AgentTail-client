@@ -11,6 +11,7 @@ ssh_private=''
 ssh_expected=''
 no_service=''
 userspace=''
+gui=''
 socks5=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -18,6 +19,8 @@ while [ "$#" -gt 0 ]; do
     --server) server=$2; shift 2 ;;
     --vpn) vpn=$2; shift 2 ;;
     --userspace) userspace=1; shift ;;
+    --gui) gui='--gui=true'; shift ;;
+    --no-gui) gui='--gui=false'; shift ;;
     --socks5) socks5=$2; userspace=1; shift 2 ;;
     --ssh-public-key) ssh_public=$2; shift 2 ;;
     --ssh-private-key) ssh_private=$2; shift 2 ;;
@@ -39,6 +42,14 @@ case "$host_cpu" in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; ris
 if [ "$arch" = riscv64 ]; then
   [ "$system" = linux ] || { printf '%s\n' 'RISC-V builds require Linux' >&2; exit 2; }
   [ -n "$custom_source" ] || source_url='https://agenttail.mizuame.app/downloads/current-nanokvm'
+fi
+if [ -z "$gui" ]; then
+  case "$system/$arch" in
+    darwin/amd64|darwin/arm64) gui='--gui=true' ;;
+    linux/amd64)
+      if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then gui='--gui=true'; else gui='--gui=false'; fi ;;
+    *) gui='--gui=false' ;;
+  esac
 fi
 for dependency in curl openssl awk; do command -v "$dependency" >/dev/null 2>&1 || { printf 'Required command: %s\n' "$dependency" >&2; exit 2; }; done
 if [ "$system" = linux ] && [ -z "$ssh_public$ssh_private" ]; then
@@ -89,7 +100,10 @@ if [ -n "$ssh_private" ]; then
   "$release_dir/$artifact" "$@"
   exit 0
 fi
-"$release_dir/$artifact" install --https-checksums --bundle "$release_dir" --source "$source_url" --server "$server" ${no_service:+"$no_service"}
+set -- install --https-checksums --bundle "$release_dir" --source "$source_url" --server "$server"
+[ -z "$no_service" ] || set -- "$@" "$no_service"
+[ -z "$gui" ] || set -- "$@" "$gui"
+"$release_dir/$artifact" "$@"
 "$release_dir/$artifact" skills install
 printf '%s\n' 'AgentTail installed. Open a new shell to use the agenttail command.'
 if [ -n "$vpn" ]; then

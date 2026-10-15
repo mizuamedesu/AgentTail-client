@@ -6,7 +6,7 @@ on:
     inputs:
       version:
         description: Native artifact version
-        default: 0.1.0-dev.21
+        default: 0.1.0-dev.22
         required: true
 permissions:
   contents: read
@@ -14,7 +14,7 @@ concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
 env:
-  RELEASE_VERSION: ${{ inputs.version || '0.1.0-dev.21' }}
+  RELEASE_VERSION: ${{ inputs.version || '0.1.0-dev.22' }}
 jobs:
   installers:
     runs-on: ubuntu-24.04
@@ -41,7 +41,7 @@ jobs:
             os: windows
             arch: amd64
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -120,6 +120,35 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python3 tests/install_lifecycle.py --first build/lifecycle-v3 --second build/lifecycle-v4 --with-service --credentials --https-checksums --report build/checksum-lifecycle.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Desktop graphics dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev wayland-protocols xvfb
+      - name: Desktop window controls and selected VPN isolation
+        env:
+          AGENTTAIL_DESKTOP_SCREENSHOT: build/desktop-controls.png
+        run: go test -race -p 1 -tags desktop,ci ./internal/desktopui
+      - name: Build and render native desktop window
+        env:
+          NATIVE_OS: ${{ matrix.os }}
+          NATIVE_ARCH: ${{ matrix.arch }}
+        run: python3 scripts/build-desktop.py --dir build/desktop --version "$RELEASE_VERSION" --os "$NATIVE_OS" --arch "$NATIVE_ARCH" --window-smoke
+      - name: Desktop install, user execution, scoped helper and uninstall
+        if: runner.os != 'Windows'
+        run: sudo env TMPDIR=/tmp GITHUB_ACTIONS=true python3 tests/desktop_install_lifecycle.py --native build/native --desktop build/desktop --report build/desktop-lifecycle.json
+      - name: Windows desktop install, scoped helper and uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python3 tests/desktop_install_lifecycle.py --native build/native --desktop build/desktop --report build/desktop-lifecycle.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: desktop-native-${{ matrix.os }}-${{ matrix.arch }}
+          path: build/desktop/
+          retention-days: 14
+          if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -128,6 +157,8 @@ jobs:
             build/native-lifecycle.json
             build/checksum-lifecycle.json
             build/native-agent.json
+            build/desktop-controls.png
+            build/desktop-lifecycle.json
           retention-days: 14
   cross-builds:
     runs-on: ubuntu-24.04

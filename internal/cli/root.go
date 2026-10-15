@@ -54,7 +54,7 @@ func Run(ctx context.Context, args []string, version string) int {
 	root.PersistentFlags().BoolVar(&o.browser, "browser", true, "offer to open device approval in a local browser; --browser=false prints the link")
 	root.PersistentFlags().BoolVar(&o.local, "allow-local-http", false, "allow loopback HTTP for development only")
 	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
-		if cmd.Name() == "version" || cmd.Name() == "licenses" || cmd.Name() == "help" || cmd.Parent() != nil && (cmd.Parent().Name() == "completion" || cmd.Parent().Name() == "skills") {
+		if cmd.Name() == "version" || cmd.Name() == "licenses" || cmd.Name() == "help" || cmd.Name() == "gui" || cmd.Parent() != nil && (cmd.Parent().Name() == "completion" || cmd.Parent().Name() == "skills") {
 			return nil
 		}
 		if cmd.Parent() != nil && cmd.Parent().Name() == "ssh" && (cmd.Name() == "install-public" || cmd.Name() == "install-private") {
@@ -71,7 +71,7 @@ func Run(ctx context.Context, args []string, version string) int {
 		if err != nil {
 			return err
 		}
-		isAgent := (cmd.Name() == "run" || cmd.Name() == "supervise") && cmd.Parent() != nil && cmd.Parent().Name() == "agent"
+		isAgent := cmd.Name() == "desktop-helper" || (cmd.Name() == "run" || cmd.Name() == "supervise") && cmd.Parent() != nil && cmd.Parent().Name() == "agent"
 		if !isAgent && cmd.Name() != "_check-secrets" {
 			exclusive := cmd.Name() == "install" || cmd.Name() == "update" || cmd.Name() == "uninstall"
 			releaseCLI, err = localstate.CLILock(filepath.Join(o.state.Store.Dir, "cli.lock"), exclusive)
@@ -101,6 +101,7 @@ func Run(ctx context.Context, args []string, version string) int {
 	o.addSSH(root)
 	o.addManagement(root)
 	o.addNetwork(root)
+	o.addDesktop(root)
 	o.addService(root)
 	o.addDistribution(root)
 	o.addSkills(root)

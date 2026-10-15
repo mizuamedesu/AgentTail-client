@@ -21,6 +21,7 @@ func (o *options) addDistribution(root *cobra.Command) {
 	var bundle, source string
 	var noService bool
 	var checksums bool
+	var gui bool
 	install := &cobra.Command{Use: "install", Short: "Install a verified native release and boot service", Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error {
 		planned := o.config
 		if err := o.saveOrigin(&planned); err != nil {
@@ -50,12 +51,19 @@ func (o *options) addDistribution(root *cobra.Command) {
 		}); err != nil {
 			return err
 		}
+		if gui {
+			if _, err = m.InstallDesktop(o.ctx, bundle); err != nil {
+				return err
+			}
+			o.notice("Desktop VPN manager installed. Open AgentTail from your applications menu or run agenttail gui.")
+		}
 		return o.print(r)
 	}}
 	install.Flags().StringVar(&bundle, "bundle", "", "directory containing release metadata and native artifacts")
 	install.Flags().StringVar(&source, "source", "", "HTTPS update source (defaults to the official channel for the verification method)")
 	install.Flags().BoolVar(&checksums, "https-checksums", false, "verify manifest.sha256; trust the HTTPS release source for publisher authentication")
 	install.Flags().BoolVar(&noService, "no-service", false, "install files only; run the agent in the foreground")
+	install.Flags().BoolVar(&gui, "gui", distribution.DesktopDefault(), "also install the desktop VPN manager; --gui=false installs the CLI only")
 	required(install, "bundle")
 	root.AddCommand(install)
 	var updateBundle, updateSource string
@@ -70,6 +78,10 @@ func (o *options) addDistribution(root *cobra.Command) {
 		}
 		if r == nil {
 			return errors.New("run the installer before updating")
+		}
+		desktopRecord, err := m.DesktopRecord()
+		if err != nil {
+			return err
 		}
 		s := updateSource
 		if s == "" {
@@ -87,6 +99,11 @@ func (o *options) addDistribution(root *cobra.Command) {
 		r, err = m.ApplyWithVerification(o.ctx, dir, s, false, true, r.VerificationMethod())
 		if err != nil {
 			return err
+		}
+		if desktopRecord != nil {
+			if _, err = m.InstallDesktop(o.ctx, dir); err != nil {
+				return err
+			}
 		}
 		return o.print(r)
 	}}
@@ -129,6 +146,9 @@ func (o *options) uninstall(offline, purge bool) error {
 	}
 	pending := []string{}
 	deferred, err := m.Remove(o.ctx, func(r *distribution.Record) error {
+		if err = m.RemoveDesktop(); err != nil {
+			return err
+		}
 		if o.server != o.config.Server && len(o.config.Keys) > 0 {
 			return errors.New("configured server does not match local credentials")
 		}

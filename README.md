@@ -27,3 +27,5 @@ macOS の公開バイナリーはネイティブ macOS SDK と CGO が必要で�
 署名秘密鍵はリポジトリに含みません。v0.1.0-dev.18 は従来の Go モジュール名を保った配布版のソースです。
 新規導入は HTTPS と SHA-256 による配布物の検証を行います。既存の署名付き更新も継続してサポートします。
 インストール手順とハッシュ照合は [INSTALLATION.ja.md](docs/INSTALLATION.ja.md) を参照してください。
+
+Desktop VPN management is available for macOS Intel/ARM, Windows x64 and Linux x64. Open AgentTail from the applications menu or use `agenttail gui` to connect or disconnect individual VPNs. See [installation instructions](docs/INSTALLATION.ja.md).
